@@ -129,10 +129,22 @@ docker compose logs --tail 100 ts-stremhu
 
 ## Windowson (Docker Desktop)
 
-Ugyanígy működik: Git Bash-ben futtasd a fenti parancsokat. Ha nincs Git Bash, másold `.env.example`-t `.env`-re, és a titkokhoz ezt a PowerShell-parancsot használd (kétszer, két különböző értékhez):
+A 2. és 3. lépés helyett:
 
-```powershell
--join ((0..31) | ForEach-Object { '{0:x2}' -f (Get-Random -Minimum 0 -Maximum 255) })
-```
+1. **Letöltés:** GitHubon a `torbox` ágon *Code → Download ZIP*, majd csomagold ki a `C:\stremhu` mappába. (Ha van Git: `git clone -b torbox https://github.com/hubbert0/stremhu-source.git C:\stremhu\stremhu-source`)
+2. PowerShellben lépj a `deploy` mappába, és generáld a `.env`-et:
 
-A gépnek ilyenkor is folyamatosan bekapcsolva kell lennie.
+   ```powershell
+   cd C:\stremhu\stremhu-source\deploy
+   powershell -ExecutionPolicy Bypass -File .\init-env.ps1
+   notepad .env
+   ```
+
+   A Jegyzettömbben írd be a `TAILNET` és `TS_AUTHKEY` értékét, majd ments.
+3. Indítás: `docker compose up -d` – innen minden ugyanúgy megy, mint fent.
+
+Hogy a gép állandó szerverként, újraindítás után is magától működjön:
+
+- Docker Desktop → Settings → General → **Start Docker Desktop when you sign in**
+- Windows **automatikus bejelentkezés** (a Docker Desktop csak bejelentkezés után indul el)
+- **Alvó mód kikapcsolása**, laptopnál a fedél lecsukásakor is: „Ne csináljon semmit”
