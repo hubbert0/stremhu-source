@@ -1,0 +1,109 @@
+# StremHU + AIOStreams + StremThru + TorBox — otthoni szerverre
+#
+# Folyamat: Stremio → AIOStreams → StremHU (Torznab, csak keresés + .torrent)
+#           → StremThru (saját, belső) → TorBox → a lejátszás közvetlenül a TorBoxról megy.
+# A filmek nem érintik ezt a gépet; itt csak kis forgalmú API-hívások futnak.
+#
+# Kívülről két cím érhető el Tailscale Funnelen (HTTPS):
+#   https://${STREMHU_HOSTNAME}.${TAILNET}     – StremHU kezelőfelület
+#   https://${AIOSTREAMS_HOSTNAME}.${TAILNET}  – AIOStreams (ezt adod hozzá a Stremióhoz)
+# A StremThru csak a belső Docker-hálózaton látszik.
+#
+# Beállítás: deploy/README.md
+
+name: stremhu-torbox
+
+services:
+  # ---------------------------------------------------------------- StremHU
+  ts-stremhu:
+    image: tailscale/tailscale:latest
+    hostname: ${STREMHU_HOSTNAME:?Add meg a .env-ben}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-stremhu-state:/var/lib/tailscale
+      - ./tailscale/stremhu.json:/config/serve.json:ro
+    # Opcionális: a StremHU saját torrentkliensének aktív módjához
+    # (csak ha a TorBox mellett a StremHU közvetlen lejátszását is használod,
+    # és a routeren továbbítod a portot erre a gépre).
+    # ports:
+    #   - "6881:6881"
+    #   - "6881:6881/udp"
+    restart: unless-stopped
+
+  stremhu:
+    image: ${STREMHU_IMAGE:-ghcr.io/hubbert0/stremhu-source:torbox}
+    network_mode: service:ts-stremhu
+    depends_on:
+      - ts-stremhu
+    environment:
+      - TZ=Europe/Budapest
+      # Reverse proxy mód: a StremHU sima HTTP-n figyel, a HTTPS-t a Tailscale adja.
+      - REVERSE_PROXY_DOMAIN=${STREMHU_HOSTNAME}.${TAILNET:?Add meg a .env-ben}
+      # Kötelező egyedi titok! Az alapértelmezett nyilvánosan ismert.
+      - SESSION_SECRET=${STREMHU_SESSION_SECRET:?Futtasd az init-env.sh-t}
+    volumes:
+      - stremhu-data:/app/data
+      # Opcionális: a StremHU saját letöltései egy nagy HDD-re
+      # - /mnt/hdd/stremhu-downloads:/app/data/downloads
+    mem_limit: 2g
+    restart: unless-stopped
+
+  # ------------------------------------------------------------- AIOStreams
+  ts-aiostreams:
+    image: tailscale/tailscale:latest
+    hostname: ${AIOSTREAMS_HOSTNAME:?Add meg a .env-ben}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-aiostreams-state:/var/lib/tailscale
+      - ./tailscale/aiostreams.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  aiostreams:
+    image: ghcr.io/viren070/aiostreams:latest
+    network_mode: service:ts-aiostreams
+    depends_on:
+      - ts-aiostreams
+      - stremthru
+    environment:
+      - TZ=Europe/Budapest
+      - BASE_URL=https://${AIOSTREAMS_HOSTNAME}.${TAILNET}
+      - SECRET_KEY=${AIOSTREAMS_SECRET_KEY:?Futtasd az init-env.sh-t}
+      - DATABASE_URI=sqlite://./data/db.sqlite
+      # Csak bejelentkezve lehet konfigurációt létrehozni (felhasznalo:jelszo).
+      - AIOSTREAMS_AUTH=${AIOSTREAMS_AUTH:?Add meg a .env-ben}
+      # A beépített addonok (Torznab) a saját StremThru-n át érik el a TorBoxot,
+      # így az nCore passkey-t tartalmazó .torrent és a TorBox-kulcs
+      # nem megy át idegen szerveren.
+      - BUILTIN_STREMTHRU_URL=http://stremthru:8080
+      - BUILTIN_DEBRID_USE_TORRENT_DOWNLOAD_URL=true
+    volumes:
+      - aiostreams-data:/app/data
+    restart: unless-stopped
+
+  # -------------------------------------------------------------- StremThru
+  stremthru:
+    image: muniftanjim/stremthru:latest
+    environment:
+      - STREMTHRU_BASE_URL=http://stremthru:8080
+      # A stream ne ezen a gépen menjen át, hanem közvetlenül a TorBoxról.
+      - STREMTHRU_STORE_CONTENT_PROXY=*:false
+      # Ne ossza meg a torrent-adatokat a nyilvános StremThru példánnyal.
+      - STREMTHRU_PEER_URI=-
+    volumes:
+      - stremthru-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ts-stremhu-state:
+  ts-aiostreams-state:
+  stremhu-data:
+  aiostreams-data:
+  stremthru-data:
