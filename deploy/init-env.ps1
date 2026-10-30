@@ -1,4 +1,4 @@
-# Windows-os megfelelője az init-env.sh-nak.
+﻿# Windows-os megfelelője az init-env.sh-nak.
 # Létrehozza a .env fájlt az .env.example alapján, és kitölti a titkokat.
 # Meglévő .env-et nem ír felül.
 #
