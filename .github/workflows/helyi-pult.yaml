@@ -112,16 +112,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Helyi Szerverpult Windowsra – letöltés: Szerverpult.exe (lent, Assets alatt).
-
-          Dupla kattintással indul, a böngészőben nyílik meg (csak a saját gépeden, 127.0.0.1).
-          A szervert SSH-n éri el; első indításkor a Beállítások fülön kell megadni a címét.
-          Útmutató: deploy/README.md → „Helyi Szerverpult (Windows)”.
-
-          Build: ${GITHUB_SHA::7}"
+          cp RELEASE_NOTES.md release-notes.tmp.md
+          printf '\n---\nBuild: `%s`\n' "${GITHUB_SHA::7}" >> release-notes.tmp.md
           if ! gh release view helyi-pult >/dev/null 2>&1; then
-            gh release create helyi-pult --target "$GITHUB_SHA" --title "Szerverpult (Windows)" --notes "$NOTES"
+            gh release create helyi-pult --target "$GITHUB_SHA" --title "Szerverpult (Windows)" --notes-file release-notes.tmp.md
           else
-            gh release edit helyi-pult --notes "$NOTES"
+            gh release edit helyi-pult --notes-file release-notes.tmp.md
           fi
           gh release upload helyi-pult dist/Szerverpult.exe --clobber
