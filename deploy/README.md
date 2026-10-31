@@ -160,6 +160,17 @@ A Contabo VNC-je akkor kell, ha a szerver nem indul el vagy nem érhető el a h�
 
 > A pult root jogot ad a szerverhez: soha ne kapcsolj rá Funnelt, és ne add ki a jelszavát.
 
+## Helyi Szerverpult (Windows)
+
+Ugyanez a pult a saját gépeden is futhat – ehhez **nem kell Tailscale**, a szervert SSH-n éri el (mint a PowerShell), és a Contabo VNC-t egy gombbal megnyitja az UltraVNC-ben.
+
+1. Töltsd le: [Szerverpult.exe](https://github.com/hubbert0/stremhu-source/releases/download/helyi-pult/Szerverpult.exe), és tedd egy állandó helyre (pl. Asztal).
+2. Dupla kattintás. A Windows első alkalommal figyelmeztethet (nem aláírt program): *További információ → Futtatás mindenképp*. Megnyílik egy fekete ablak (ezt hagyd nyitva) és a böngésző.
+3. **Beállítások** fül: a szerver címe (ugyanaz, mint az `ssh root@…` parancsban), a szerver jelszava → *Kapcsolódás és kulcs telepítése*. A program saját SSH-kulcsot telepít a szerverre, a jelszót nem menti el.
+4. **Széf** fül: válassz mesterjelszót. A Contabo VNC-bejegyzésnél (cím: `IP:port`, jelszó: a VNC-jelszó) pipáld be a *VNC-kapcsolat* négyzetet → a kártyán megjelenik a *Megnyitás UltraVNC-vel* gomb.
+
+Ha bezártad a böngészőlapot, indítsd el újra az exe-t – ha már fut, csak újra megnyitja a lapot. Az adatok (beállítások, SSH-kulcs, titkosított széf) a `%APPDATA%\Szerverpult` mappában vannak; a széf mentése a szerveres pulttal kölcsönösen visszaállítható.
+
 ## Frissítés
 
 ```sh

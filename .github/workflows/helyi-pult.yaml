@@ -1,0 +1,127 @@
+# A helyi Szerverpult (deploy/helyi-pult) Windows-os .exe-je.
+# Tesztek Linuxon (SSH-teszt-szerverrel), majd build Windowson PyInstallerrel,
+# indítási próba, és feltöltés a "helyi-pult" GitHub-kiadásba:
+#   https://github.com/<tulajdonos>/stremhu-source/releases/download/helyi-pult/Szerverpult.exe
+
+name: Helyi Szerverpult (Windows .exe)
+
+on:
+  push:
+    branches:
+      - torbox
+    paths:
+      - "deploy/helyi-pult/**"
+      - ".github/workflows/helyi-pult.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: helyi-pult-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Tesztek (Linux)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/helyi-pult
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Függőségek
+        run: pip install -r requirements.txt pytest
+
+      - name: Pytest
+        run: python -m pytest -q
+
+  build:
+    name: Windows .exe
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: deploy/helyi-pult
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Függőségek
+        run: pip install -r requirements.txt pytest pyinstaller==6.14.2
+
+      - name: Pytest (Windows)
+        run: python -m pytest -q
+
+      - name: Verziószám
+        run: |
+          $sha = "${{ github.sha }}".Substring(0, 7)
+          Set-Content -Path app/_version.py -Value "VERSION = `"torbox-$sha`""
+
+      - name: PyInstaller
+        run: >
+          pyinstaller --noconfirm --clean --onefile --console --name Szerverpult
+          --add-data "app/static;app/static"
+          --collect-submodules uvicorn
+          --collect-submodules websockets
+          --collect-submodules asyncssh
+          run.py
+
+      - name: Indítási próba
+        run: |
+          $env:SZERVERPULT_NO_BROWSER = "1"
+          $env:SZERVERPULT_DATA = Join-Path $env:RUNNER_TEMP "szp"
+          $proc = Start-Process -FilePath "dist\Szerverpult.exe" -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            Start-Sleep -Seconds 2
+            try {
+              $health = Invoke-RestMethod -Uri "http://127.0.0.1:8765/health" -TimeoutSec 3
+              if ($health.app -eq "szerverpult") { $ok = $true; break }
+            } catch {}
+          }
+          if ($ok) {
+            $token = (Get-Content (Join-Path $env:SZERVERPULT_DATA "token")).Trim()
+            $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+            Invoke-WebRequest -Uri "http://127.0.0.1:8765/login?t=$token" -WebSession $session `
+              -MaximumRedirection 0 -SkipHttpErrorCheck -ErrorAction SilentlyContinue | Out-Null
+            $page = Invoke-WebRequest -Uri "http://127.0.0.1:8765/" -WebSession $session -SkipHttpErrorCheck
+            $js = Invoke-WebRequest -Uri "http://127.0.0.1:8765/static/vendor/xterm.js" -WebSession $session -SkipHttpErrorCheck
+            $info = Invoke-WebRequest -Uri "http://127.0.0.1:8765/api/info" -WebSession $session -SkipHttpErrorCheck
+            Write-Host "Oldal: $($page.StatusCode), xterm.js: $($js.StatusCode), info: $($info.StatusCode) $($info.Content)"
+            if ($page.StatusCode -ne 200 -or $page.Content -notmatch "Szerverpult" -or $js.StatusCode -ne 200 -or $info.StatusCode -ne 200) {
+              $ok = $false
+            }
+          }
+          taskkill /PID $proc.Id /T /F | Out-Null
+          if (-not $ok) { Write-Error "Az exe nem indult el rendben."; exit 1 }
+          Write-Host "Az exe rendben elindult."
+
+      - name: Kiadás (GitHub Release)
+        if: github.ref == 'refs/heads/torbox'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Helyi Szerverpult Windowsra – letöltés: Szerverpult.exe (lent, Assets alatt).
+
+          Dupla kattintással indul, a böngészőben nyílik meg (csak a saját gépeden, 127.0.0.1).
+          A szervert SSH-n éri el; első indításkor a Beállítások fülön kell megadni a címét.
+          Útmutató: deploy/README.md → „Helyi Szerverpult (Windows)”.
+
+          Build: ${GITHUB_SHA::7}"
+          if ! gh release view helyi-pult >/dev/null 2>&1; then
+            gh release create helyi-pult --target "$GITHUB_SHA" --title "Szerverpult (Windows)" --notes "$NOTES"
+          else
+            gh release edit helyi-pult --notes "$NOTES"
+          fi
+          gh release upload helyi-pult dist/Szerverpult.exe --clobber

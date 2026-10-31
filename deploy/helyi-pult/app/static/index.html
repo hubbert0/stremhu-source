@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Szerverpult</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css">
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2330; --muted: #677085;
+    --line: #dfe3ea; --accent: #3b5bdb; --accent-text: #ffffff;
+    --ok: #2b8a3e; --bad: #c92a2a; --warn: #e67700; --code: #0f1420; --code-text: #d7dce6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141b; --panel: #1a1f2a; --text: #e6e9ef; --muted: #8e97aa;
+      --line: #2c3342; --accent: #6c8cff; --accent-text: #0b0e14;
+      --ok: #51cf66; --bad: #ff6b6b; --warn: #ffa94d; --code: #0b0e14; --code-text: #d7dce6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line);
+           position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0 8px 0 0; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { background: none; border: 1px solid transparent; color: var(--muted);
+               padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; }
+  nav button.active { color: var(--text); border-color: var(--line); background: var(--bg); }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  body.wide main { max-width: none; }
+  section { display: none; } section.active { display: block; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .grow { flex: 1; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  button.btn { background: var(--accent); color: var(--accent-text); border: 0; border-radius: 8px;
+               padding: 8px 14px; font: inherit; cursor: pointer; }
+  button.btn.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+  button.btn.danger { background: var(--bad); color: #fff; }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  input, textarea { font: inherit; color: var(--text); background: var(--bg);
+                    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; }
+  textarea { min-height: 70px; resize: vertical; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+  .card a { color: var(--accent); word-break: break-all; text-decoration: none; }
+  .group-title { margin: 18px 0 8px; font-size: 13px; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--muted); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; background: var(--panel);
+          border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .state-running { color: var(--ok); } .state-exited, .state-dead { color: var(--bad); }
+  .state-restarting { color: var(--warn); }
+  pre.console { background: var(--code); color: var(--code-text); border-radius: 12px; padding: 12px;
+                min-height: 220px; max-height: 60vh; overflow: auto; white-space: pre-wrap;
+                word-break: break-word; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .entry { display: grid; gap: 4px; }
+  .entry .kv { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .entry .kv code { background: var(--bg); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  .hidden { display: none !important; }
+  .notice { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--warn);
+            border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text);
+           width: min(900px, 94vw); padding: 16px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .edit-row { display: grid; grid-template-columns: 1.2fr 2fr 1fr 1.6fr auto auto; gap: 6px; align-items: center;
+              margin-bottom: 6px; }
+  .pill { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+          color: var(--muted); white-space: nowrap; }
+  .pill.ok { color: var(--ok); border-color: var(--ok); } .pill.bad { color: var(--bad); border-color: var(--bad); }
+  #term-wrap { background: #0b0e14; border-radius: 12px; padding: 8px; height: calc(100vh - 190px); min-height: 320px; }
+  #term { width: 100%; height: 100%; }
+  .check { display: flex; gap: 8px; align-items: center; margin: 10px 0 0; color: var(--text); font-size: 14px; }
+  .check input { width: auto; }
+  .steps { margin: 6px 0 0 18px; padding: 0; } .steps li { margin: 4px 0; }
+  code.block { display: block; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+               padding: 8px 10px; word-break: break-all; font-size: 12.5px; }
+  footer { max-width: 1100px; margin: 0 auto; padding: 0 16px 24px; }
+  @media (max-width: 720px) {
+    .edit-row { grid-template-columns: 1fr; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .hide-mobile { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🖥️ Szerverpult</h1>
+  <nav id="tabs">
+    <button data-tab="overview" class="active">Áttekintés</button>
+    <button data-tab="docker">Docker</button>
+    <button data-tab="actions">Műveletek</button>
+    <button data-tab="terminal">Terminál</button>
+    <button data-tab="vault">Széf</button>
+    <button data-tab="settings">Beállítások</button>
+  </nav>
+  <span class="grow"></span>
+  <span class="pill" id="ssh-pill" title="SSH-kapcsolat a szerverrel">SSH: …</span>
+</header>
+
+<main>
+  <!-- Áttekintés -->
+  <section id="tab-overview" class="active">
+    <div class="row">
+      <span class="grow muted small" id="status-time">Állapot betöltése…</span>
+      <button class="btn secondary" id="btn-refresh-status">Frissítés</button>
+      <button class="btn secondary" id="btn-edit-services">Szerkesztés</button>
+    </div>
+    <div id="services"></div>
+  </section>
+
+  <!-- Docker -->
+  <section id="tab-docker">
+    <div class="row">
+      <span class="grow muted small">A szerveren futó konténerek</span>
+      <button class="btn secondary" id="btn-refresh-containers">Frissítés</button>
+    </div>
+    <table>
+      <thead><tr><th>Név</th><th>Állapot</th><th class="hide-mobile">Image</th><th></th></tr></thead>
+      <tbody id="containers"></tbody>
+    </table>
+  </section>
+
+  <!-- Műveletek -->
+  <section id="tab-actions">
+    <div class="row" id="action-buttons"></div>
+    <pre class="console" id="action-output">Válassz egy műveletet.</pre>
+  </section>
+
+  <!-- Széf -->
+  <section id="tab-vault">
+    <div class="notice small">
+      A széf tartalmát a böngésződ titkosítja a mesterjelszóval (AES-256), és csak titkosítva kerül a gépedre
+      – <b>ha elfelejted a mesterjelszót, az adatok nem állíthatók vissza</b>. A „VNC-kapcsolat”-nak jelölt
+      bejegyzések egy gombbal megnyílnak az UltraVNC-ben.
+    </div>
+
+    <div id="vault-create" class="card hidden">
+      <h3>Új széf létrehozása</h3>
+      <label>Mesterjelszó (legalább 10 karakter)</label>
+      <input type="password" id="vault-new-pass" autocomplete="new-password">
+      <label>Mesterjelszó újra</label>
+      <input type="password" id="vault-new-pass2" autocomplete="new-password">
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btn-vault-create">Létrehozás</button>
+        <button class="btn secondary" id="btn-vault-import">Mentés visszaállítása…</button>
+      </div>
+      <input type="file" id="vault-import-file" accept="application/json,.json" class="hidden">
+    </div>
+
+    <div id="vault-locked" class="card hidden">
+      <h3>🔒 A széf zárolva</h3>
+      <label>Mesterjelszó</label>
+      <input type="password" id="vault-pass" autocomplete="current-password">
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btn-vault-unlock">Feloldás</button>
+        <button class="btn secondary" id="btn-vault-export">Titkosított mentés letöltése</button>
+      </div>
+    </div>
+
+    <div id="vault-open" class="hidden">
+      <div class="row">
+        <input id="vault-search" placeholder="Keresés…" style="flex:1 1 180px;max-width:320px">
+        <span class="grow"></span>
+        <button class="btn" id="btn-vault-add">+ Új bejegyzés</button>
+        <button class="btn secondary" id="btn-vault-lock">Zárolás</button>
+      </div>
+      <div class="muted small" id="vault-saved"></div>
+      <div class="grid" id="vault-entries" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <!-- Terminál -->
+  <section id="tab-terminal">
+    <div class="row">
+      <span class="grow muted small" id="term-status">Parancssor a szerveren (a <code>deploy</code> mappában indul).</span>
+      <button class="btn secondary" id="btn-term-reconnect">Újracsatlakozás</button>
+    </div>
+    <div id="term-wrap"><div id="term"></div></div>
+    <p class="muted small">Másolás: jelöld ki a szöveget, majd <b>Ctrl+Shift+C</b> · Beillesztés: <b>Ctrl+Shift+V</b> vagy jobb klikk.
+      Hasznos: <code>docker compose ps</code>, <code>docker compose logs --tail 50 stremhu</code>, <code>sh install.sh</code></p>
+  </section>
+
+  <!-- Beállítások -->
+  <section id="tab-settings">
+    <div class="card" style="margin-bottom:12px">
+      <h3>Kapcsolat a szerverrel (SSH)</h3>
+      <div class="muted small" id="setup-current"></div>
+      <label>Szerver címe (ugyanaz, mint amivel PowerShellből belépsz: <code>ssh root@<b>EZ</b></code>)</label>
+      <input id="set-host" placeholder="pl. szerver.example.com vagy 203.0.113.10">
+      <div class="row" style="margin:0">
+        <div style="flex:1 1 120px"><label>Felhasználó</label><input id="set-user" value="root"></div>
+        <div style="flex:0 1 110px"><label>Port</label><input id="set-port" type="number" value="22" min="1" max="65535"></div>
+        <div style="flex:2 1 220px"><label>A repó mappája a szerveren</label><input id="set-repo" value="/root/stremhu-source"></div>
+      </div>
+      <label>A szerver jelszava (csak most kell, a program nem menti el)</label>
+      <input id="set-pass" type="password" autocomplete="off">
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="btn-setup">Kapcsolódás és kulcs telepítése</button>
+        <span class="muted small" id="setup-status"></span>
+      </div>
+      <details class="small">
+        <summary class="muted">Jelszó nélkül, kézzel telepített kulccsal</summary>
+        <p class="muted">Ha a szerveren ki van kapcsolva a jelszavas belépés: lépj be PowerShellből a szokott módon, és futtasd ezt
+          a parancsot, majd itt a jelszómezőt hagyd üresen és kattints a fenti gombra.</p>
+        <code class="block" id="manual-cmd"></code>
+        <div class="row" style="margin-top:8px"><button class="btn secondary" id="btn-copy-manual">Parancs másolása</button></div>
+      </details>
+    </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <h3>UltraVNC</h3>
+      <div class="muted small" id="vnc-status"></div>
+      <label>A vncviewer.exe helye (üresen hagyva magától keresi)</label>
+      <input id="set-vnc" placeholder="C:\Program Files\uvnc bvba\UltraVNC\vncviewer.exe">
+      <div class="row" style="margin-top:12px"><button class="btn secondary" id="btn-save-vnc">Mentés</button></div>
+    </div>
+
+    <div class="card">
+      <h3>A programról</h3>
+      <p class="muted small" id="about"></p>
+    </div>
+  </section>
+</main>
+<footer class="muted small" id="footer"></footer>
+
+<!-- Napló ablak -->
+<dialog id="logs-dialog">
+  <div class="row"><b class="grow" id="logs-title">Napló</b>
+    <button class="btn secondary" id="btn-logs-refresh">Frissítés</button>
+    <button class="btn secondary" id="btn-logs-close">Bezárás</button></div>
+  <pre class="console" id="logs-output"></pre>
+</dialog>
+
+<!-- Szolgáltatások szerkesztése -->
+<dialog id="services-dialog">
+  <div class="row"><b class="grow">Szolgáltatások szerkesztése</b></div>
+  <div class="muted small" style="margin-bottom:8px">Név · Webcím · Csoport · Megjegyzés · Ellenőrzés · Törlés</div>
+  <div id="services-edit"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="btn secondary" id="btn-service-add">+ Új sor</button>
+    <button class="btn secondary" id="btn-services-reset">Alapértelmezett lista</button>
+    <span class="grow"></span>
+    <button class="btn secondary" id="btn-services-cancel">Mégse</button>
+    <button class="btn" id="btn-services-save">Mentés</button>
+  </div>
+</dialog>
+
+<!-- Széf-bejegyzés szerkesztése -->
+<dialog id="entry-dialog">
+  <div class="row"><b class="grow" id="entry-title-h">Bejegyzés</b></div>
+  <label>Megnevezés</label><input id="entry-title">
+  <label>Webcím / gép</label><input id="entry-url">
+  <label>Felhasználónév</label><input id="entry-user" autocomplete="off">
+  <label>Jelszó / kulcs</label>
+  <div class="row" style="margin:0"><input class="grow" id="entry-pass" type="password" autocomplete="off" style="width:auto">
+    <button class="btn secondary" id="btn-entry-show" type="button">Mutat</button>
+    <button class="btn secondary" id="btn-entry-gen" type="button">Generál</button></div>
+  <label>Megjegyzés</label><textarea id="entry-note"></textarea>
+  <label class="check"><input type="checkbox" id="entry-vnc"> VNC-kapcsolat (a cím IP:port, pl. a Contabo VNC-adatai)</label>
+  <div class="row" style="margin-top:12px">
+    <button class="btn danger" id="btn-entry-delete">Törlés</button>
+    <span class="grow"></span>
+    <button class="btn secondary" id="btn-entry-cancel">Mégse</button>
+    <button class="btn" id="btn-entry-save">Mentés</button>
+  </div>
+</dialog>
+
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/addon-fit.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") node.className = value;
+    else if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) if (child != null) node.append(child);
+  return node;
+};
+
+async function api(path, options = {}) {
+  const response = await fetch(path, { credentials: "same-origin", ...options });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail || detail; } catch (_) {}
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  const type = response.headers.get("content-type") || "";
+  return type.includes("application/json") ? response.json() : response.text();
+}
+
+/* ---------- Fülek ---------- */
+const loaders = {};
+document.querySelectorAll("#tabs button").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b === button));
+    document.querySelectorAll("main section").forEach((s) => s.classList.toggle("active", s.id === "tab-" + button.dataset.tab));
+    document.body.classList.toggle("wide", button.dataset.tab === "terminal");
+    (loaders[button.dataset.tab] || (() => {}))();
+  });
+});
+
+let INFO = { actions: {}, configured: false, ssh: "", version: "" };
+
+/* ---------- Áttekintés ---------- */
+let SERVICES = [];
+let STATUS = {};
+
+function renderServices() {
+  const root = $("services");
+  root.replaceChildren();
+  const groups = new Map();
+  for (const service of SERVICES) {
+    if (!groups.has(service.group)) groups.set(service.group, []);
+    groups.get(service.group).push(service);
+  }
+  for (const [group, items] of groups) {
+    root.append(el("div", { class: "group-title", text: group }));
+    const grid = el("div", { class: "grid" });
+    for (const service of items) {
+      const status = STATUS[service.name];
+      let dotClass = "dot";
+      let title = "nincs ellenőrzés";
+      if (service.check && status) {
+        dotClass += status.ok ? " ok" : " bad";
+        title = status.ok ? `elérhető (${status.code}, ${status.ms} ms)` : `nem elérhető (${status.code || status.error || "hiba"})`;
+      }
+      grid.append(el("div", { class: "card" },
+        el("h3", {}, el("span", { class: dotClass, title }), service.name),
+        el("a", { href: service.url, target: "_blank", rel: "noopener", text: service.url }),
+        service.note ? el("div", { class: "muted small", text: service.note }) : null,
+        service.check && status ? el("div", { class: "muted small", text: title }) : null,
+      ));
+    }
+    root.append(grid);
+  }
+}
+
+async function loadServices() {
+  SERVICES = (await api("/api/services")).services;
+  renderServices();
+}
+
+async function loadStatus() {
+  $("status-time").textContent = "Állapot ellenőrzése…";
+  try {
+    const results = await api("/api/status");
+    STATUS = Object.fromEntries(results.map((r) => [r.name, r]));
+    const bad = results.filter((r) => !r.ok).length;
+    $("status-time").textContent = `Utolsó ellenőrzés: ${new Date().toLocaleTimeString("hu-HU")} · ` +
+      (bad ? `${bad} szolgáltatás nem elérhető` : "minden ellenőrzött szolgáltatás elérhető");
+  } catch (error) {
+    $("status-time").textContent = "Hiba az ellenőrzéskor: " + error.message;
+  }
+  renderServices();
+}
+loaders.overview = () => {};
+$("btn-refresh-status").addEventListener("click", loadStatus);
+
+function serviceEditRow(service = { name: "", url: "https://", group: "Egyéb", note: "", check: true }) {
+  const row = el("div", { class: "edit-row" },
+    el("input", { value: service.name, placeholder: "Név", "data-f": "name" }),
+    el("input", { value: service.url, placeholder: "https://…", "data-f": "url" }),
+    el("input", { value: service.group, placeholder: "Csoport", "data-f": "group" }),
+    el("input", { value: service.note || "", placeholder: "Megjegyzés", "data-f": "note" }),
+  );
+  const check = el("input", { type: "checkbox", "data-f": "check", title: "Elérhetőség ellenőrzése" });
+  check.checked = !!service.check;
+  check.style.width = "auto";
+  row.append(check, el("button", { class: "btn secondary", text: "✕", onclick: () => row.remove() }));
+  return row;
+}
+$("btn-edit-services").addEventListener("click", () => {
+  const box = $("services-edit");
+  box.replaceChildren(...SERVICES.map((s) => serviceEditRow(s)));
+  $("services-dialog").showModal();
+});
+$("btn-service-add").addEventListener("click", () => $("services-edit").append(serviceEditRow()));
+$("btn-services-cancel").addEventListener("click", () => $("services-dialog").close());
+$("btn-services-save").addEventListener("click", async () => {
+  const services = [...$("services-edit").children].map((row) => {
+    const get = (f) => row.querySelector(`[data-f="${f}"]`);
+    return { name: get("name").value.trim(), url: get("url").value.trim(), group: get("group").value.trim() || "Egyéb",
+             note: get("note").value.trim(), check: get("check").checked };
+  }).filter((s) => s.name && s.url);
+  try {
+    SERVICES = (await api("/api/services", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                             body: JSON.stringify({ services }) })).services;
+    $("services-dialog").close();
+    loadStatus();
+  } catch (error) { alert("Mentési hiba: " + error.message); }
+});
+
+/* ---------- Docker ---------- */
+let currentLogs = null;
+async function loadContainers() {
+  const body = $("containers");
+  body.replaceChildren(el("tr", {}, el("td", { colspan: "4", class: "muted", text: "Betöltés…" })));
+  try {
+    const containers = await api("/api/containers");
+    body.replaceChildren(...containers.map((c) => el("tr", {},
+      el("td", {}, el("div", { text: c.name }), c.project ? el("div", { class: "muted small", text: c.project }) : null),
+      el("td", {}, el("div", { class: "state-" + c.state, text: c.state }), el("div", { class: "muted small", text: c.status })),
+      el("td", { class: "hide-mobile muted small", text: c.image }),
+      el("td", {}, el("div", { class: "row", style: "margin:0;justify-content:flex-end" },
+        el("button", { class: "btn secondary", text: "Napló", onclick: () => openLogs(c.name) }),
+        el("button", { class: "btn secondary", text: "Újraindítás", onclick: () => restart(c.name) }),
+      )),
+    )));
+  } catch (error) {
+    body.replaceChildren(el("tr", {}, el("td", { colspan: "4", text: "Hiba: " + error.message })));
+  }
+}
+async function openLogs(name) {
+  currentLogs = name;
+  $("logs-title").textContent = "Napló: " + name;
+  $("logs-output").textContent = "Betöltés…";
+  $("logs-dialog").showModal();
+  try {
+    $("logs-output").textContent = (await api(`/api/containers/${encodeURIComponent(name)}/logs?tail=300`)).logs || "(üres)";
+    $("logs-output").scrollTop = $("logs-output").scrollHeight;
+  } catch (error) { $("logs-output").textContent = "Hiba: " + error.message; }
+}
+async function restart(name) {
+  if (!confirm(`Újraindítod: ${name}?`)) return;
+  try { await api(`/api/containers/${encodeURIComponent(name)}/restart`, { method: "POST" }); loadContainers(); }
+  catch (error) { alert("Hiba: " + error.message); }
+}
+loaders.docker = loadContainers;
+$("btn-refresh-containers").addEventListener("click", loadContainers);
+$("btn-logs-refresh").addEventListener("click", () => currentLogs && openLogs(currentLogs));
+$("btn-logs-close").addEventListener("click", () => $("logs-dialog").close());
+
+/* ---------- Műveletek ---------- */
+let actionRunning = false;
+function renderActions() {
+  const box = $("action-buttons");
+  box.replaceChildren(...Object.entries(INFO.actions).map(([key, label]) =>
+    el("button", { class: "btn secondary", text: label, onclick: () => runAction(key, label) })));
+}
+async function runAction(key, label) {
+  if (actionRunning) return;
+  if (key === "update" && !confirm("Frissíted a szervert? A szolgáltatások egy-két percre újraindulhatnak.")) return;
+  actionRunning = true;
+  document.querySelectorAll("#action-buttons button").forEach((b) => (b.disabled = true));
+  const out = $("action-output");
+  out.textContent = `▶ ${label}\n`;
+  try {
+    const response = await fetch(`/api/actions/${key}`, { method: "POST", credentials: "same-origin" });
+    if (!response.ok || !response.body) throw new Error(response.statusText);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      out.textContent += decoder.decode(value, { stream: true });
+      out.scrollTop = out.scrollHeight;
+    }
+  } catch (error) {
+    out.textContent += `\n❌ ${error.message}\n`;
+  } finally {
+    actionRunning = false;
+    document.querySelectorAll("#action-buttons button").forEach((b) => (b.disabled = false));
+  }
+}
+
+/* ---------- Széf (kliensoldali titkosítás) ---------- */
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+const b64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const unb64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
+const ITERATIONS = 600000;
+
+let vaultBlob = null;     // a szerveren tárolt titkosított csomag
+let vaultKey = null;      // CryptoKey, csak a memóriában
+let vaultSalt = null;
+let vaultEntries = [];
+let lockTimer = null;
+
+async function deriveKey(password, salt, iterations) {
+  const material = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+    material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function encryptEntries() {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, vaultKey,
+    enc.encode(JSON.stringify({ entries: vaultEntries })));
+  return { v: 1, salt: b64(vaultSalt), iv: b64(iv), iter: ITERATIONS, data: b64(data) };
+}
+async function saveVault() {
+  const blob = await encryptEntries();
+  const result = await api("/api/vault", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                           body: JSON.stringify(blob) });
+  vaultBlob = { ...blob, updated_at: result.updated_at };
+  $("vault-saved").textContent = "Mentve: " + new Date(result.updated_at).toLocaleString("hu-HU");
+}
+function showVault(view) {
+  for (const id of ["vault-create", "vault-locked", "vault-open"]) $(id).classList.toggle("hidden", id !== view);
+}
+function bumpLockTimer() {
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(lockVault, 10 * 60 * 1000);
+}
+function lockVault() {
+  vaultKey = null; vaultEntries = []; clearTimeout(lockTimer);
+  $("vault-entries").replaceChildren();
+  $("vault-pass").value = "";
+  showVault(vaultBlob ? "vault-locked" : "vault-create");
+}
+async function loadVault() {
+  if (vaultKey) return;
+  vaultBlob = await api("/api/vault");
+  showVault(vaultBlob ? "vault-locked" : "vault-create");
+}
+loaders.vault = loadVault;
+
+$("btn-vault-create").addEventListener("click", async () => {
+  const p1 = $("vault-new-pass").value, p2 = $("vault-new-pass2").value;
+  if (p1.length < 10) return alert("A mesterjelszó legalább 10 karakter legyen.");
+  if (p1 !== p2) return alert("A két jelszó nem egyezik.");
+  vaultSalt = crypto.getRandomValues(new Uint8Array(16));
+  vaultKey = await deriveKey(p1, vaultSalt, ITERATIONS);
+  vaultEntries = [];
+  await saveVault();
+  $("vault-new-pass").value = $("vault-new-pass2").value = "";
+  openVault();
+});
+async function unlock() {
+  try {
+    vaultSalt = unb64(vaultBlob.salt);
+    const key = await deriveKey($("vault-pass").value, vaultSalt, vaultBlob.iter);
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(vaultBlob.iv) }, key, unb64(vaultBlob.data));
+    vaultKey = key;
+    vaultEntries = JSON.parse(dec.decode(plain)).entries || [];
+    $("vault-pass").value = "";
+    openVault();
+  } catch (_) { alert("Hibás mesterjelszó."); }
+}
+$("btn-vault-unlock").addEventListener("click", unlock);
+$("vault-pass").addEventListener("keydown", (e) => { if (e.key === "Enter") unlock(); });
+$("btn-vault-lock").addEventListener("click", lockVault);
+$("btn-vault-export").addEventListener("click", () => {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(vaultBlob, null, 2)], { type: "application/json" }));
+  const a = el("a", { href: url, download: "szerverpult-szef-titkositott.json" });
+  document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+});
+$("btn-vault-import").addEventListener("click", () => $("vault-import-file").click());
+$("vault-import-file").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const blob = JSON.parse(await file.text());
+    const { v, salt, iv, iter, data } = blob;
+    const result = await api("/api/vault", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                             body: JSON.stringify({ v, salt, iv, iter, data }) });
+    vaultBlob = { v, salt, iv, iter, data, updated_at: result.updated_at };
+    showVault("vault-locked");
+    alert("Visszaállítva. Oldd fel a mentéskor használt mesterjelszóval.");
+  } catch (error) { alert("Nem sikerült visszaállítani: " + error.message); }
+});
+$("vault-search").addEventListener("input", renderEntries);
+document.addEventListener("click", () => vaultKey && bumpLockTimer());
+document.addEventListener("keydown", () => vaultKey && bumpLockTimer());
+
+function openVault() {
+  showVault("vault-open");
+  $("vault-saved").textContent = vaultBlob && vaultBlob.updated_at
+    ? "Utoljára mentve: " + new Date(vaultBlob.updated_at).toLocaleString("hu-HU") : "";
+  bumpLockTimer();
+  renderEntries();
+}
+async function copyText(text, button) {
+  await navigator.clipboard.writeText(text);
+  const old = button.textContent; button.textContent = "Másolva ✓";
+  setTimeout(() => (button.textContent = old), 1200);
+}
+function renderEntries() {
+  const query = $("vault-search").value.toLowerCase();
+  const items = vaultEntries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => !query || [entry.title, entry.url, entry.user, entry.note].join(" ").toLowerCase().includes(query))
+    .sort((a, b) => (a.entry.title || "").localeCompare(b.entry.title || "", "hu"));
+  if (!items.length) {
+    $("vault-entries").replaceChildren(el("div", { class: "muted", text: vaultEntries.length ? "Nincs találat." : "Még nincs bejegyzés. Kezdd pl. a Tailscale, a Contabo (VNC) vagy a TorBox adataival." }));
+    return;
+  }
+  $("vault-entries").replaceChildren(...items.map(({ entry, index }) => {
+    const card = el("div", { class: "card entry" }, el("h3", { text: entry.title || "(névtelen)" }));
+    if (entry.url) {
+      const isLink = /^https?:\/\//i.test(entry.url);
+      card.append(el("div", { class: "kv" }, isLink
+        ? el("a", { href: entry.url, target: "_blank", rel: "noopener", text: entry.url })
+        : el("code", { text: entry.url })));
+    }
+    if (entry.user) {
+      const btn = el("button", { class: "btn secondary", text: "Másol" });
+      btn.addEventListener("click", () => copyText(entry.user, btn));
+      card.append(el("div", { class: "kv" }, el("span", { class: "muted small", text: "Felhasználó:" }), el("code", { text: entry.user }), btn));
+    }
+    if (entry.pass) {
+      const code = el("code", { text: "••••••••" });
+      const show = el("button", { class: "btn secondary", text: "Mutat" });
+      show.addEventListener("click", () => {
+        const hidden = code.textContent === "••••••••";
+        code.textContent = hidden ? entry.pass : "••••••••";
+        show.textContent = hidden ? "Elrejt" : "Mutat";
+      });
+      const copy = el("button", { class: "btn secondary", text: "Másol" });
+      copy.addEventListener("click", () => copyText(entry.pass, copy));
+      card.append(el("div", { class: "kv" }, el("span", { class: "muted small", text: "Jelszó:" }), code, show, copy));
+    }
+    if (entry.note) card.append(el("div", { class: "muted small", style: "white-space:pre-wrap", text: entry.note }));
+    const actions = el("div", { class: "row", style: "margin:6px 0 0" });
+    if (entry.vnc && entry.url) {
+      const vncButton = el("button", { class: "btn", text: "Megnyitás UltraVNC-vel" });
+      vncButton.addEventListener("click", () => openVnc(entry, vncButton));
+      actions.append(vncButton);
+    }
+    actions.append(el("button", { class: "btn secondary", text: "Szerkesztés", onclick: () => editEntry(index) }));
+    card.append(actions);
+    return card;
+  }));
+}
+
+let editingIndex = null;
+function editEntry(index) {
+  editingIndex = index;
+  const entry = index === null ? { title: "", url: "", user: "", pass: "", note: "", vnc: false } : vaultEntries[index];
+  $("entry-title-h").textContent = index === null ? "Új bejegyzés" : "Bejegyzés szerkesztése";
+  $("entry-title").value = entry.title || "";
+  $("entry-url").value = entry.url || "";
+  $("entry-user").value = entry.user || "";
+  $("entry-pass").value = entry.pass || "";
+  $("entry-pass").type = "password";
+  $("entry-note").value = entry.note || "";
+  $("entry-vnc").checked = !!entry.vnc;
+  $("btn-entry-delete").classList.toggle("hidden", index === null);
+  $("entry-dialog").showModal();
+}
+$("btn-vault-add").addEventListener("click", () => editEntry(null));
+$("btn-entry-cancel").addEventListener("click", () => $("entry-dialog").close());
+$("btn-entry-show").addEventListener("click", () => {
+  $("entry-pass").type = $("entry-pass").type === "password" ? "text" : "password";
+});
+$("btn-entry-gen").addEventListener("click", () => {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789-_.";
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  $("entry-pass").value = Array.from(bytes, (b) => chars[b % chars.length]).join("");
+  $("entry-pass").type = "text";
+});
+$("btn-entry-save").addEventListener("click", async () => {
+  const entry = { title: $("entry-title").value.trim(), url: $("entry-url").value.trim(),
+                  user: $("entry-user").value, pass: $("entry-pass").value, note: $("entry-note").value,
+                  vnc: $("entry-vnc").checked };
+  if (!entry.title) return alert("Adj meg egy megnevezést.");
+  const previous = vaultEntries.slice();
+  if (editingIndex === null) vaultEntries.push(entry); else vaultEntries[editingIndex] = entry;
+  try { await saveVault(); $("entry-dialog").close(); renderEntries(); }
+  catch (error) { vaultEntries = previous; alert("Mentési hiba: " + error.message); }
+});
+$("btn-entry-delete").addEventListener("click", async () => {
+  if (editingIndex === null || !confirm("Biztosan törlöd ezt a bejegyzést?")) return;
+  const previous = vaultEntries.slice();
+  vaultEntries.splice(editingIndex, 1);
+  try { await saveVault(); $("entry-dialog").close(); renderEntries(); }
+  catch (error) { vaultEntries = previous; alert("Mentési hiba: " + error.message); }
+});
+
+/* ---------- UltraVNC ---------- */
+async function openVnc(entry, button) {
+  const old = button.textContent;
+  button.disabled = true; button.textContent = "Indítás…";
+  try {
+    await api("/api/vnc", { method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ address: entry.url, password: entry.pass || "" }) });
+    button.textContent = "Elindítva ✓";
+  } catch (error) {
+    alert(error.message);
+    button.textContent = old;
+  } finally {
+    setTimeout(() => { button.disabled = false; button.textContent = old; }, 2000);
+  }
+}
+
+/* ---------- Szolgáltatáslista visszaállítása ---------- */
+$("btn-services-reset").addEventListener("click", async () => {
+  if (!confirm("Visszaállítod az alapértelmezett listát? A saját módosításaid elvesznek.")) return;
+  SERVICES = (await api("/api/services", { method: "DELETE" })).services;
+  $("services-dialog").close();
+  loadStatus();
+});
+
+/* ---------- SSH-állapot ---------- */
+async function refreshSshPill() {
+  const pill = $("ssh-pill");
+  if (!INFO.configured) {
+    pill.className = "pill bad"; pill.textContent = "SSH: nincs beállítva"; pill.title = "Beállítások fül";
+    return;
+  }
+  pill.className = "pill"; pill.textContent = "SSH: …";
+  const result = await api("/api/ssh/check").catch((error) => ({ ok: false, error: error.message }));
+  pill.className = "pill " + (result.ok ? "ok" : "bad");
+  pill.textContent = result.ok ? "SSH: kapcsolódva" : "SSH: hiba";
+  pill.title = result.ok ? `${INFO.ssh} · ${result.output || ""}` : (result.error || "");
+}
+$("ssh-pill").addEventListener("click", () => document.querySelector('#tabs button[data-tab="settings"]').click());
+$("ssh-pill").style.cursor = "pointer";
+
+/* ---------- Terminál ---------- */
+let term = null, fit = null, socket = null;
+function termStatus(text) { $("term-status").textContent = text; }
+function ensureTerm() {
+  if (term) return;
+  term = new Terminal({
+    cursorBlink: true, fontSize: 14, scrollback: 5000,
+    fontFamily: '"Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace',
+    theme: { background: "#0b0e14" },
+  });
+  fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open($("term"));
+  term.onData((data) => { if (socket && socket.readyState === 1) socket.send(JSON.stringify({ t: "i", d: data })); });
+  term.attachCustomKeyEventHandler((event) => {
+    if (event.type === "keydown" && event.ctrlKey && event.shiftKey && event.code === "KeyC") {
+      const text = term.getSelection();
+      if (text) navigator.clipboard.writeText(text);
+      return false;
+    }
+    if (event.type === "keydown" && event.ctrlKey && event.shiftKey && event.code === "KeyV") {
+      navigator.clipboard.readText().then((text) => term.paste(text));
+      return false;
+    }
+    return true;
+  });
+  $("term").addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    const text = term.getSelection();
+    if (text) { navigator.clipboard.writeText(text); term.clearSelection(); }
+    else navigator.clipboard.readText().then((value) => term.paste(value));
+  });
+  window.addEventListener("resize", fitTerm);
+}
+function fitTerm() {
+  if (!term || !$("tab-terminal").classList.contains("active")) return;
+  fit.fit();
+  if (socket && socket.readyState === 1) socket.send(JSON.stringify({ t: "r", c: term.cols, r: term.rows }));
+}
+function connectTerm() {
+  ensureTerm();
+  if (socket && socket.readyState <= 1) socket.close();
+  if (!INFO.configured) {
+    term.write("\r\n\x1b[33mElőbb állítsd be a kapcsolatot a Beállítások fülön.\x1b[0m\r\n");
+    return;
+  }
+  fit.fit();
+  termStatus("Kapcsolódás…");
+  const url = `ws://${location.host}/ws/terminal?cols=${term.cols}&rows=${term.rows}`;
+  const ws = new WebSocket(url);
+  socket = ws;
+  ws.onopen = () => { termStatus(`Kapcsolódva: ${INFO.ssh}`); term.focus(); };
+  ws.onmessage = (event) => term.write(event.data);
+  ws.onclose = () => { if (socket === ws) termStatus("A kapcsolat megszakadt – Újracsatlakozás gomb."); };
+}
+loaders.terminal = () => {
+  setTimeout(() => {
+    ensureTerm();
+    if (!socket || socket.readyState > 1) connectTerm(); else { fitTerm(); term.focus(); }
+  }, 30);
+};
+$("btn-term-reconnect").addEventListener("click", () => { term && term.reset(); connectTerm(); });
+
+/* ---------- Beállítások ---------- */
+async function loadSettings() {
+  const s = await api("/api/settings");
+  $("set-host").value = s.ssh_host || "";
+  $("set-user").value = s.ssh_user || "root";
+  $("set-port").value = s.ssh_port || 22;
+  $("set-repo").value = s.repo_dir || "/root/stremhu-source";
+  $("set-vnc").value = s.vnc_viewer || "";
+  $("manual-cmd").textContent =
+    `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${s.public_key}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
+  $("setup-current").textContent = s.configured
+    ? `Beállítva: ${s.ssh_user}@${s.ssh_host}:${s.ssh_port} · gépkulcs: ${s.host_key_fingerprint}` +
+      (s.tailnet ? ` · tailnet: ${s.tailnet}` : "")
+    : "Még nincs beállítva. Add meg a szerver címét és jelszavát – a program saját kulcsot telepít, a jelszót nem menti el.";
+  $("vnc-status").textContent = s.vnc_found ? `Megtalálva: ${s.vnc_found}` : "Nem találom a vncviewer.exe-t – telepítsd az UltraVNC-t, vagy add meg a helyét.";
+  $("about").textContent = `Verzió: ${INFO.version} · Adatok: ${INFO.data_dir} (beállítások, SSH-kulcs, titkosított széf).`;
+}
+loaders.settings = loadSettings;
+$("btn-copy-manual").addEventListener("click", (event) => copyText($("manual-cmd").textContent, event.target));
+$("btn-setup").addEventListener("click", async () => {
+  const button = $("btn-setup");
+  button.disabled = true;
+  $("setup-status").textContent = "Kapcsolódás…";
+  try {
+    const result = await api("/api/setup", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssh_host: $("set-host").value.trim(), ssh_user: $("set-user").value.trim(),
+                             ssh_port: Number($("set-port").value) || 22, repo_dir: $("set-repo").value.trim(),
+                             password: $("set-pass").value }) });
+    $("set-pass").value = "";
+    $("setup-status").textContent = "✅ Kész, a kapcsolat működik." + (result.tailnet ? "" : " (A szerver .env fájlját nem találtam – a címeket az Áttekintésben kézzel is megadhatod.)");
+    INFO = await api("/api/info");
+    await loadSettings();
+    await loadServices();
+    loadStatus();
+    refreshSshPill();
+  } catch (error) {
+    $("setup-status").textContent = "❌ " + error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+$("btn-save-vnc").addEventListener("click", async () => {
+  const result = await api("/api/settings/local", { method: "PUT", headers: { "Content-Type": "application/json" },
+                                                    body: JSON.stringify({ vnc_viewer: $("set-vnc").value }) });
+  $("vnc-status").textContent = result.vnc_found ? `Megtalálva: ${result.vnc_found}` : "A megadott helyen nincs vncviewer.exe.";
+});
+
+/* ---------- Indulás ---------- */
+(async () => {
+  try {
+    INFO = await api("/api/info");
+    renderActions();
+    $("footer").textContent = `Szerverpult ${INFO.version} · helyi program, a szervert SSH-n éri el`;
+    if (!INFO.configured) {
+      document.querySelector('#tabs button[data-tab="settings"]').click();
+    }
+    refreshSshPill();
+    setInterval(refreshSshPill, 120000);
+    await loadServices();
+    await loadStatus();
+    setInterval(loadStatus, 60000);
+  } catch (error) {
+    $("status-time").textContent = "Hiba: " + error.message;
+  }
+})();
+</script>
+</body>
+</html>

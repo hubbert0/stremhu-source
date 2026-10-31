@@ -1,0 +1,4 @@
+build/
+dist/
+*.spec
+app/_version.py
