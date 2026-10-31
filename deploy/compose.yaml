@@ -10,6 +10,7 @@
 #   https://${TMDB_HOSTNAME}.${TAILNET}        – saját TMDB-addon (magyar címek)
 #   https://${LELIBRARY_HOSTNAME}.${TAILNET}   – LeLibrary (TorBox-könyvtár a Stremióban)
 #   https://${FELIRAT_HOSTNAME}.${TAILNET}     – magyar feliratok (feliratok.eu)
+#   https://${EMBY_HOSTNAME}.${TAILNET}        – Emby-könyvtár (saját Emby-szerverek; titkos linkkel)
 # A StremThru csak a belső Docker-hálózaton látszik.
 #
 # Szerverpult (csak a tailnetről, Funnel nélkül):
@@ -261,6 +262,51 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
+  # --------------------------------------------------------- Emby-könyvtár
+  # A saját Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján, a
+  # lejátszás közvetlenül az Embyről megy. Beállítás: a .env EMBY1_..., EMBY2_...
+  # sorai (README 5.7). A telepítési link titkos (EMBY_ADDON_SECRET), kiírja:
+  #   docker compose exec emby python -m app.selftest
+  ts-emby:
+    image: tailscale/tailscale:latest
+    hostname: ${EMBY_HOSTNAME:-emby}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/emby.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-emby-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    restart: unless-stopped
+
+  emby:
+    image: ${EMBY_IMAGE:-ghcr.io/hubbert0/stremhu-emby:latest}
+    build: ./emby
+    network_mode: service:ts-emby
+    depends_on:
+      - ts-emby
+    environment:
+      - TZ=Europe/Budapest
+      - EMBY_BASE_URL=https://${EMBY_HOSTNAME:-emby}.${TAILNET}
+      - EMBY_ADDON_SECRET=${EMBY_ADDON_SECRET:-}
+      - EMBY1_NEV=${EMBY1_NEV:-}
+      - EMBY1_URL=${EMBY1_URL:-}
+      - EMBY1_FELHASZNALO=${EMBY1_FELHASZNALO:-}
+      - EMBY1_JELSZO=${EMBY1_JELSZO:-}
+      - EMBY2_NEV=${EMBY2_NEV:-}
+      - EMBY2_URL=${EMBY2_URL:-}
+      - EMBY2_FELHASZNALO=${EMBY2_FELHASZNALO:-}
+      - EMBY2_JELSZO=${EMBY2_JELSZO:-}
+      - EMBY3_NEV=${EMBY3_NEV:-}
+      - EMBY3_URL=${EMBY3_URL:-}
+      - EMBY3_FELHASZNALO=${EMBY3_FELHASZNALO:-}
+      - EMBY3_JELSZO=${EMBY3_JELSZO:-}
+    volumes:
+      - emby-data:/data
+    mem_limit: 256m
+    restart: unless-stopped
+
   # ---------------------------------------------------------- Szerverpult
   # Csak a tailnetről érhető el (a pult.json-ban nincs Funnel), és a
   # .env-ben lévő PULT_USER / PULT_PASSWORD kell hozzá. Root jogú
@@ -302,6 +348,7 @@ services:
       - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
       - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
       - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
+      - EMBY_HOSTNAME=${EMBY_HOSTNAME:-emby}
       - REPO_DIR=${REPO_DIR:-/root/stremhu-source}
     volumes:
       # A konténerek kezeléséhez és a frissítéshez (git pull + compose).
@@ -364,6 +411,7 @@ services:
       - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
       - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
       - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
+      - EMBY_HOSTNAME=${EMBY_HOSTNAME:-emby}
       - NTFY_TOPIC=${NTFY_TOPIC:?Futtasd az install.sh-t}
     volumes:
       - ./gatus/config.yaml:/config/config.yaml:ro
@@ -403,6 +451,7 @@ services:
       - ts-tmdb-state:/userdata/tailscale/tmdb:ro
       - ts-lelibrary-state:/userdata/tailscale/lelibrary:ro
       - ts-felirat-state:/userdata/tailscale/felirat:ro
+      - ts-emby-state:/userdata/tailscale/emby:ro
       - ts-pult-state:/userdata/tailscale/pult:ro
     mem_limit: 512m
     restart: unless-stopped
@@ -452,6 +501,8 @@ volumes:
   lelibrary-redis:
   ts-felirat-state:
   felirat-data:
+  ts-emby-state:
+  emby-data:
   gatus-data:
   backrest-data:
   backrest-config:

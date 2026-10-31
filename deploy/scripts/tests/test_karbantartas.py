@@ -72,6 +72,7 @@ HOSTS = {
     "TMDB-addon": "tmdb",
     "LeLibrary": "lelibrary",
     "Magyar feliratok": "felirat",
+    "Emby-könyvtár": "emby",
 }
 PATHS = {
     "StremHU": "/",
@@ -79,6 +80,7 @@ PATHS = {
     "TMDB-addon": "/manifest.json",
     "LeLibrary": "/health",
     "Magyar feliratok": "/health",
+    "Emby-könyvtár": "/health",
 }
 
 
@@ -139,6 +141,7 @@ class Env:
             "felirat": "Magyar feliratok",
             "aiostreams": "AIOStreams",
             "tmdb": "TMDB-addon",
+            "emby": "Emby-könyvtár",
         }
         lines = [f"{url(names[k])} {v}" for k, v in codes.items()]
         (self.fake / "kodok").write_text("\n".join(lines) + "\n")
@@ -147,7 +150,14 @@ class Env:
         self.set_codes(
             **{
                 k: code
-                for k in ("lelibrary", "stremhu", "felirat", "aiostreams", "tmdb")
+                for k in (
+                    "lelibrary",
+                    "stremhu",
+                    "felirat",
+                    "aiostreams",
+                    "tmdb",
+                    "emby",
+                )
             }
         )
 

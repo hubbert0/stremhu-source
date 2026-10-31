@@ -25,6 +25,7 @@ flowchart LR
 | **StremThru** | Feltölti a `.torrent`-et a TorBoxra | csak belül, kívülről nem látszik |
 | **TMDB-addon** | Magyar filmcímek, leírások, katalógusok a Stremióban | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **LeLibrary** | A TorBoxon lévő filmek és sorozatok poszterekkel a Stremio kezdőlapján, a sorozatrészek egymás után | nyilvános HTTPS-cím (Tailscale Funnel) |
+| **Emby-könyvtár** | A saját otthoni Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján, lejátszás közvetlenül az Embyről | nyilvános HTTPS-cím (Tailscale Funnel), titkos linkkel |
 | **Magyar feliratok** | Felirataddon a feliratok.eu-hoz, javított ékezetekkel, a kiadáshoz illő sorrendben | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **Állapotfigyelő** | Gatus: mi működik, mi nem; hiba esetén értesítés a telefonra (ntfy) | csak a saját tailnetedről |
 | **Mentés** | Backrest: titkosított napi mentés felhőtárhelyre | csak a saját tailnetedről |
@@ -60,6 +61,7 @@ A fork kapcsolatban marad az eredetivel, így a StremHU új verziói átvehetők
 | `deploy/pult/` | a szerveren futó Szerverpult |
 | `deploy/helyi-pult/` | a Windowsos Szerverpult (`Szerverpult.exe`) |
 | `deploy/feliratok/` | a felirataddon (feliratok.eu) |
+| `deploy/emby/` | az Emby-könyvtár bővítmény |
 | `deploy/gatus/` | az állapotfigyelő beállításai |
 | `deploy/scripts/` | az önjavító figyelő és a heti frissítés (cron-szkriptek) |
 | `deploy/lelibrary/` | a LeLibrary magyarítása (a build előtt alkalmazott módosítás) |
@@ -75,6 +77,7 @@ A `torbox` ágra kerülő minden módosítás után a GitHub magától teszteli 
 |---|---|
 | TorBox build (GHCR) | `ghcr.io/hubbert0/stremhu-source:torbox` – a StremHU Docker-image-e |
 | Szerverpult build (GHCR) | `ghcr.io/hubbert0/stremhu-pult:latest` – a szerveres pult |
+| Emby-könyvtár build (GHCR) | `ghcr.io/hubbert0/stremhu-emby:latest` – az Emby-könyvtár |
 | Felirat-addon build (GHCR) | `ghcr.io/hubbert0/stremhu-feliratok:latest` – a felirataddon |
 | LeLibrary (magyar) build (GHCR) | `ghcr.io/hubbert0/lelibrary-hu:latest` – a LeLibrary magyarított image-e |
 | Helyi Szerverpult (Windows .exe) | [`Szerverpult.exe`](https://github.com/hubbert0/stremhu-source/releases/tag/helyi-pult) |

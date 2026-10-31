@@ -2,13 +2,13 @@
 # Önjavító figyelő – a cron 3 percenként futtatja (az install.sh állítja be).
 #
 # Kívülről, a Tailscale Funnelen át (ahogy a családtagok Stremiója is látja)
-# megnézi az öt nyilvános címet. Ha egy cím 3 egymás utáni ellenőrzésen nem
+# megnézi a nyilvános címeket. Ha egy cím 3 egymás utáni ellenőrzésen nem
 # válaszol (kb. 10 perc), a hozzá tartozó két konténert (Tailscale + program)
 # újraindítja, és értesítést küld a telefonra (ntfy).
 #
 # Óvintézkedések:
 # - ugyanazt a szolgáltatást legfeljebb óránként egyszer indítja újra;
-# - ha egyszerre mind az öt cím elérhetetlen, nem indít újra semmit (az
+# - ha egyszerre minden cím elérhetetlen, nem indít újra semmit (az
 #   hálózati vagy Tailscale-hiba, amin az újraindítás nem segít);
 # - a heti frissítés közben nem fut.
 #

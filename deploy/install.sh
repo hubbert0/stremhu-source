@@ -72,6 +72,7 @@ ensure_line PULT_HOSTNAME "pult"
 ensure_line PULT_USER "admin"
 ensure_line LELIBRARY_HOSTNAME "lelibrary"
 ensure_line FELIRAT_HOSTNAME "felirat"
+ensure_line EMBY_HOSTNAME "emby"
 ensure_line REPO_DIR "${DIR}"
 ensure_line ONJAVITO "1"
 ensure_line AUTO_FRISSITES "1"
@@ -95,6 +96,23 @@ ensure_secret PULT_PASSWORD 10
 ensure_secret LELIBRARY_CONFIG_SECRET 32
 ensure_secret LELIBRARY_SELFHOST_SECRET 32
 ensure_secret LELIBRARY_DB_PASSWORD 16
+ensure_secret EMBY_ADDON_SECRET 16
+# Az Emby-könyvtár kitöltendő sorai (README 5.7).
+if ! grep -q '^EMBY1_URL=' .env; then
+  cat >> .env <<'EMBY'
+
+# --- Emby-könyvtár: saját Emby-szerverek (README 5.7) ---
+# A jelszó csak betűket és számokat tartalmazzon.
+EMBY1_NEV=Saját
+EMBY1_URL=
+EMBY1_FELHASZNALO=
+EMBY1_JELSZO=
+EMBY2_NEV=
+EMBY2_URL=
+EMBY2_FELHASZNALO=
+EMBY2_JELSZO=
+EMBY
+fi
 ensure_line NTFY_TOPIC ""
 if grep -q '^NTFY_TOPIC=$' .env; then
   sed -i "s|^NTFY_TOPIC=.*|NTFY_TOPIC=stremhu-$(gen_secret 10)|" .env
@@ -157,7 +175,7 @@ docker compose ps
 
 # Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
 sleep 15
-for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-felirat ts-pult; do
+for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-felirat ts-emby ts-pult; do
   STATUS="$(docker compose exec -T "${TS}" tailscale status 2>/dev/null || true)"
   if printf '%s' "${STATUS}" | grep -q 'Logged out\|NeedsLogin'; then
     echo
@@ -184,6 +202,7 @@ echo "  AIOStreams: https://${AIO_NOW}.${TAILNET_NOW}/stremio/configure"
 echo "  TMDB-addon: https://${TMDB_NOW}.${TAILNET_NOW}/configure"
 echo "  LeLibrary:  https://${LEL_NOW}.${TAILNET_NOW}/configure"
 echo "  Feliratok:  https://${FEL_NOW}.${TAILNET_NOW}/manifest.json"
+echo "  Emby-könyvtár (titkos link): docker compose exec emby python -m app.selftest"
 echo "AIOStreams-jelszó (ha elfelejtenéd):  grep AIOSTREAMS_AUTH ${DIR}/deploy/.env"
 echo
 echo "Szerverpult (csak a tailnetedről):"

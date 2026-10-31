@@ -101,6 +101,7 @@ AIOSTREAMS_HOSTNAME=aiostreams
 TMDB_HOSTNAME=tmdb
 LELIBRARY_HOSTNAME=lelibrary
 FELIRAT_HOSTNAME=felirat
+EMBY_HOSTNAME=emby
 NTFY_TOPIC=teszt
 REPO_DIR=/root/stremhu-source
 """
@@ -239,7 +240,7 @@ def test_full_migration(world: World) -> None:
         f"REPO_DIR={world.new_repo}"
     ) == 1
     assert "auto=1" in (world.root / "install.log").read_text()
-    assert "Mind az öt nyilvános cím működik" in result.stdout
+    assert "Minden nyilvános cím működik" in result.stdout
 
 
 def test_volume_missing_from_compose_is_created(world: World) -> None:

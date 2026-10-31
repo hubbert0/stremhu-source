@@ -70,6 +70,7 @@ class Hostnames(BaseModel):
     pult: str = Field(default="pult", pattern=r"^[a-z0-9-]{1,63}$")
     lelibrary: str = Field(default="lelibrary", pattern=r"^[a-z0-9-]{1,63}$")
     felirat: str = Field(default="felirat", pattern=r"^[a-z0-9-]{1,63}$")
+    emby: str = Field(default="emby", pattern=r"^[a-z0-9-]{1,63}$")
 
 
 class Settings(BaseModel):

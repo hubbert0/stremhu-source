@@ -8,7 +8,7 @@ Ez a leírás végigvezet a rendszer telepítésén, beállításán és mindenn
 2. [Fogalmak](#2-fogalmak)
 3. [Amire szükséged lesz](#3-amire-szükséged-lesz)
 4. [Telepítés a szerverre](#4-telepítés-a-szerverre)
-5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary, feliratok](#5-első-beállítás)
+5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary, feliratok, Emby](#5-első-beállítás)
 6. [Címek és jelszavak – mi hol van?](#6-címek-és-jelszavak)
 7. [A `.env` fájl](#7-a-env-fájl)
 8. [TorBox-helykezelés](#8-torbox-helykezelés)
@@ -45,6 +45,7 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `stremthru` | `.torrent` feltöltése a TorBoxra | csak belül |
 | `lelibrary` + `ts-lelibrary` + `lelibrary-db` + `lelibrary-redis` | LeLibrary: a TorBoxon lévő tartalom poszterekkel a Stremio kezdőlapján | nyilvános HTTPS (Funnel) |
 | `feliratok` + `ts-felirat` | magyar feliratok a feliratok.eu-ról (Stremio-felirataddon) | nyilvános HTTPS (Funnel) |
+| `emby` + `ts-emby` | Emby-könyvtár: a saját Emby-szerverek filmjei és sorozatai a Stremióban | nyilvános HTTPS (Funnel), titkos linkkel |
 | `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről, vagy SSH-alagúton |
 | `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről, vagy SSH-alagúton |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
@@ -228,6 +229,49 @@ docker compose exec feliratok python -m app.selftest
 docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: IMDb-azonosító:évad:rész
 ```
 
+### 5.7 Emby-könyvtár – saját Emby-szerverek a Stremióban
+
+Saját bővítmény, amely egy vagy több (legfeljebb 3) **otthoni Emby-szerver** tartalmát hozza a Stremióba:
+
+- **Kezdőlapi sorok szerverenként** – pl. *„Saját: Filmek”*, *„Saját: Sorozatok”* – plakátokkal, a legutóbb hozzáadottal kezdve, kereséssel.
+- Rákattintva a **megszokott magyar adatlap** nyílik (a saját TMDB-addonból), a sorozatoknál évadokkal és részekkel. Ami az Embyben nem kapott IMDb/TMDb-azonosítót, annak az adatlapját az Emby adja.
+- **Lejátszás közvetlenül az Embyről**, átkódolás nélkül, a TorBox-találatok mellett ugyanabban a listában (*„Emby · Saját – 1080p”*); az Embyben lévő külön feliratfájlok is megjelennek.
+- A plakátokat a mi szerverünk tölti le és tárolja egy hétig, így az otthoni gépek feltöltését a filmek kapják.
+
+**Amit tudni kell**
+
+- A film **az otthoni gépről** jön: a feltöltési sebesség számít (1080p-hez kb. 10–20, 4K-hoz 40–80 Mbit/s).
+- Az Embynek **kívülről elérhetőnek** kell lennie (ahogy otthonon kívül a böngészőből is megnyitod). A böngészős Stremio csak HTTPS-es Embyvel működik, az appok HTTP-vel is.
+- A lejátszási linkben benne van az Emby-felhasználó belépési kulcsa. Ezért **külön, csak lejátszásra jogosult felhasználót** használj, és a bővítmény linkje **titkos** (`https://emby.<tailnet>/<titok>/manifest.json`): aki nem ismeri, semmit nem lát.
+
+**Beállítás**
+
+1. **Külön felhasználó mindkét Embyn** (Emby webes felület → fogaskerék → *Users* → *New User*):
+   - név pl. `stremio`, jelszó **csak betűkből és számokból**;
+   - *Allow this user to manage the server*: **kikapcsolva**;
+   - ha van *Allow remote connections to this Emby Server*: **bekapcsolva**;
+   - *Library access*: a megosztandó könyvtárak; *Allow media playback*: **bekapcsolva**.
+2. **A `.env` kitöltése** a szerveren (`nano ~/stremhu-source/deploy/.env`, a végén az *Emby-könyvtár* rész):
+
+   | Sor | Mit írj be |
+   |---|---|
+   | `EMBY1_NEV` | így jelenik meg a Stremióban, pl. `Saját` |
+   | `EMBY1_URL` | az Emby kívülről elérhető címe, pl. `https://emby.pelda.hu` vagy `http://1.2.3.4:8096` (a `/web/...` rész nélkül) |
+   | `EMBY1_FELHASZNALO`, `EMBY1_JELSZO` | az 1. lépésben létrehozott felhasználó |
+   | `EMBY2_...` | ugyanez a második szerverhez (üresen hagyva nincs második) |
+
+3. Indítás: `cd ~/stremhu-source && git pull && cd deploy && sh install.sh`. Ha a végén belépő linket ír ki a `ts-emby`-hez, nyisd meg.
+4. Ellenőrzés és a telepítési link:
+
+   ```sh
+   docker compose exec emby python -m app.selftest
+   ```
+
+   Szerverenként kiírja, sikerült-e a belépés, hány film és sorozat van, a végén pedig a **telepítési linket**. Tedd a Széfbe.
+5. **Az AIOStreamsbe:** az AIOStreams beállítóoldalán add hozzá a linket egyéni (custom) bővítményként, és kapcsold be a katalógusait. Így minden profil megkapja, a családnál semmit nem kell telepíteni. (Vagy profilonként közvetlenül a Stremióba: a linket illeszd be az *Addons* keresőjébe.)
+
+A `.env` módosítása után: `cd ~/stremhu-source/deploy && docker compose up -d emby`.
+
 ## 6. Címek és jelszavak
 
 | Mi | Cím | Belépés | Hol van a jelszó? |
@@ -237,6 +281,7 @@ docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: 
 | TMDB-addon | `https://tmdb.<tailnet>/configure` | nincs | – |
 | LeLibrary | `https://lelibrary.<tailnet>/configure` | a beállítás szerkesztő linkje + jelszó | te adtad meg a beállításkor |
 | Magyar feliratok | `https://felirat.<tailnet>` | nincs | – |
+| Emby-könyvtár | titkos link: `docker compose exec emby python -m app.selftest` | nincs (a link a kulcs) | `.env` → `EMBY_ADDON_SECRET`; az Emby-felhasználók: `EMBY1_...`, `EMBY2_...` |
 | Állapotfigyelő | `https://pult.<tailnet>:8090` (tailnetről) vagy `http://localhost:8090` (SSH-alagúton) | nincs | – |
 | Mentés (Backrest) | `https://pult.<tailnet>:9898` (tailnetről) vagy `http://localhost:9898` (SSH-alagúton) | a Backrestben létrehozott felhasználó | te adtad meg az első belépéskor |
 | Szerverpult | `https://pult.<tailnet>` (csak tailnetről) | `admin` | `.env` → `PULT_PASSWORD` |
@@ -263,6 +308,8 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `STREMHU_HOSTNAME`, `AIOSTREAMS_HOSTNAME`, `TMDB_HOSTNAME`, `PULT_HOSTNAME` | a gépek neve a tailneten (ebből lesz a cím) |
 | `TMDB_API_KEY`, `FANART_API_KEY` | a TMDB-addon kulcsai |
 | `LELIBRARY_HOSTNAME`, `FELIRAT_HOSTNAME` | a LeLibrary és a felirataddon gépneve a tailneten |
+| `EMBY_HOSTNAME`, `EMBY_ADDON_SECRET` | az Emby-könyvtár gépneve a tailneten és a telepítési link titkos része (generált; ha megváltoztatod, a linket mindenhol cserélni kell) |
+| `EMBY1_NEV`, `EMBY1_URL`, `EMBY1_FELHASZNALO`, `EMBY1_JELSZO` (és `EMBY2_…`, `EMBY3_…`) | az Emby-szerverek ([5.7](#57-emby-könyvtár--saját-emby-szerverek-a-stremióban)) |
 | `NTFY_TOPIC` | az állapotfigyelő értesítéseinek témája az ntfy alkalmazásban (generált; titokként kezeld) |
 | `LELIBRARY_CONFIG_SECRET`, `LELIBRARY_SELFHOST_SECRET`, `LELIBRARY_DB_PASSWORD` | a LeLibrary titkai (generált) – **első indítás után ne változtasd meg**, különben a mentett beállítások és az adatbázis elérhetetlenné válnak |
 | `STREMHU_IMAGE` | melyik StremHU-image fusson (alapból ennek a forknak a buildje) |
@@ -489,9 +536,9 @@ A frissítés letölti a repó és az image-ek új változatát, és újraindít
 
 A telepítő két ütemezett feladatot állít be a szerveren (cron). Mindkettő az állapotfigyelő ntfy-témájára küld értesítést, így a telefonodon látod, mi történt.
 
-**Önjavító figyelő – 3 percenként.** Kívülről (a Funnelen át, ahogy a családtagok Stremiója is látja) megnézi az öt nyilvános címet: StremHU, AIOStreams, TMDB-addon, LeLibrary, Magyar feliratok. Ha egy cím **3 egymás utáni ellenőrzésen** (kb. 10 percig) nem válaszol, a hozzá tartozó két konténert (Tailscale + program) újraindítja, és értesítést küld: *„LeLibrary újraindítva”*.
+**Önjavító figyelő – 3 percenként.** Kívülről (a Funnelen át, ahogy a családtagok Stremiója is látja) megnézi a nyilvános címeket: StremHU, AIOStreams, TMDB-addon, LeLibrary, Magyar feliratok, Emby-könyvtár. Ha egy cím **3 egymás utáni ellenőrzésen** (kb. 10 percig) nem válaszol, a hozzá tartozó két konténert (Tailscale + program) újraindítja, és értesítést küld: *„LeLibrary újraindítva”*.
 - Ugyanazt a szolgáltatást **legfeljebb óránként egyszer** indítja újra; ha az sem segít, az állapotfigyelő továbbra is jelez, és kézzel kell ránézni.
-- Ha **mind az öt** cím egyszerre elérhetetlen, nem indít újra semmit: az hálózati vagy Tailscale-hiba, amin az újraindítás nem segít.
+- Ha **minden** cím egyszerre elérhetetlen, nem indít újra semmit: az hálózati vagy Tailscale-hiba, amin az újraindítás nem segít.
 - A heti frissítés közben nem fut.
 
 **Heti frissítés – vasárnap hajnali 5-kor** (a szerver órája szerint, a 4 órás mentés után). Letölti a repó és az image-ek új változatát, felügyelet nélküli módban lefuttatja a telepítőt (kérdések nélkül, a `.env` új sorait pótolja), újraindítja, ami változott, és törli a régi image-eket. 3 perc múlva kívülről ellenőrzi a nyilvános címeket, és értesítést küld:
@@ -548,7 +595,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | Tünet | Mit nézz / mit csinálj |
 |---|---|
 | Egy cím nem töltődik be | `docker compose ps` – fut-e a konténer? Ha nem: `docker compose up -d`. Napló: `docker compose logs --tail 100 NÉV` |
-| Egy nyilvános cím nem válaszol (a böngésző sokáig tölt, a pult *ConnectTimeout*-ot ír), a többi működik, a konténer pedig *healthy* | a Tailscale újraindításkor ritkán rossz állapotban marad. Az önjavító figyelő kb. 10 perc után magától újraindítja ([11. fejezet](#11-frissítés)); azonnal kézzel is lehet – a hozzá tartozó két konténer újraindítása megoldja, pl. a LeLibrarynél: `docker compose up -d --force-recreate ts-lelibrary lelibrary` (a többinél: `ts-stremhu stremhu`, `ts-aiostreams aiostreams`, `ts-tmdb tmdb`, `ts-felirat feliratok`), majd 1 perc várakozás |
+| Egy nyilvános cím nem válaszol (a böngésző sokáig tölt, a pult *ConnectTimeout*-ot ír), a többi működik, a konténer pedig *healthy* | a Tailscale újraindításkor ritkán rossz állapotban marad. Az önjavító figyelő kb. 10 perc után magától újraindítja ([11. fejezet](#11-frissítés)); azonnal kézzel is lehet – a hozzá tartozó két konténer újraindítása megoldja, pl. a LeLibrarynél: `docker compose up -d --force-recreate ts-lelibrary lelibrary` (a többinél: `ts-stremhu stremhu`, `ts-aiostreams aiostreams`, `ts-tmdb tmdb`, `ts-felirat feliratok`, `ts-emby emby`), majd 1 perc várakozás |
 | A Tailscale-konténer nincs bent | `docker compose exec ts-stremhu tailscale status` – ha *Logged out*, futtasd újra a telepítőt, és nyisd meg a kiírt belépő linket |
 | `denied` / `unauthorized` image-letöltéskor | GitHubon: profil → *Packages* → a csomag → *Package settings* → *Change visibility* → **Public** |
 | Nincs magyar találat a Stremióban | 1) a [5.1](#51-stremhu) ellenőrző címe XML-t ad-e; 2) a TMDB-addonban be van-e kapcsolva az IMDb Integration; 3) az AIOStreamsben jó-e a Torznab URL és a kulcs |

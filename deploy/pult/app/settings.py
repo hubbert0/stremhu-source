@@ -42,5 +42,6 @@ def load_settings() -> Settings:
             "pult": os.environ.get("PULT_HOSTNAME", "pult"),
             "lelibrary": os.environ.get("LELIBRARY_HOSTNAME", "lelibrary"),
             "felirat": os.environ.get("FELIRAT_HOSTNAME", "felirat"),
+            "emby": os.environ.get("EMBY_HOSTNAME", "emby"),
         },
     )

@@ -20,7 +20,8 @@ SERVICES='StremHU|ts-stremhu|stremhu|STREMHU_HOSTNAME|stremhu|/
 AIOStreams|ts-aiostreams|aiostreams|AIOSTREAMS_HOSTNAME|aiostreams|/api/v1/health
 TMDB-addon|ts-tmdb|tmdb|TMDB_HOSTNAME|tmdb|/manifest.json
 LeLibrary|ts-lelibrary|lelibrary|LELIBRARY_HOSTNAME|lelibrary|/health
-Magyar feliratok|ts-felirat|feliratok|FELIRAT_HOSTNAME|felirat|/health'
+Magyar feliratok|ts-felirat|feliratok|FELIRAT_HOSTNAME|felirat|/health
+Emby-könyvtár|ts-emby|emby|EMBY_HOSTNAME|emby|/health'
 
 mkdir -p "${STATE_DIR}"
 

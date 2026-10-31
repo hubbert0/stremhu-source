@@ -79,6 +79,16 @@ endpoints:
       - type: ntfy
         description: "A felirat-addon nem válaszol"
 
+  - name: Emby-könyvtár
+    group: Szerver
+    url: "https://${EMBY_HOSTNAME}.${TAILNET}/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "Az Emby-könyvtár bővítmény nem válaszol"
+
   - name: StremThru (belső)
     group: Szerver
     url: "http://stremthru:8080/v0/health"

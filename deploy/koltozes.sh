@@ -203,7 +203,8 @@ SERVICES="StremHU|ts-stremhu|stremhu|$(env_get STREMHU_HOSTNAME)|/
 AIOStreams|ts-aiostreams|aiostreams|$(env_get AIOSTREAMS_HOSTNAME)|/api/v1/health
 TMDB-addon|ts-tmdb|tmdb|$(env_get TMDB_HOSTNAME)|/manifest.json
 LeLibrary|ts-lelibrary|lelibrary|$(env_get LELIBRARY_HOSTNAME)|/health
-Magyar feliratok|ts-felirat|feliratok|$(env_get FELIRAT_HOSTNAME)|/health"
+Magyar feliratok|ts-felirat|feliratok|$(env_get FELIRAT_HOSTNAME)|/health
+Emby-könyvtár|ts-emby|emby|$(env_get EMBY_HOSTNAME)|/health"
 
 check_all() {
   FAILING=""
@@ -267,7 +268,7 @@ NEW_IP=$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | awk '{ for (i = 1; i <
 [ -n "${NEW_IP}" ] || NEW_IP=$( (hostname -I 2>/dev/null || true) | awk '{ print $1 }')
 say "Kész"
 if [ "${ok}" = "1" ]; then
-  info "Mind az öt nyilvános cím működik az új szerverről."
+  info "Minden nyilvános cím működik az új szerverről."
 else
   info "Még nem válaszol:"
   printf '%s' "${FAILING}" | while IFS='|' read -r name _ _; do [ -n "${name}" ] && info "  - ${name}"; done

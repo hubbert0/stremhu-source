@@ -69,6 +69,12 @@ def default_services(settings: Settings) -> list[Service]:
                 "Felirataddon a feliratok.eu-hoz",
             ),
             _service(
+                "Emby-könyvtár",
+                f"https://{host.emby}.{tn}/",
+                "Szerver",
+                "A saját Emby-szerverek a Stremio kezdőlapján",
+            ),
+            _service(
                 "Állapotfigyelő (tailnet)",
                 f"https://{host.pult}.{tn}:8090",
                 "Szerver",
