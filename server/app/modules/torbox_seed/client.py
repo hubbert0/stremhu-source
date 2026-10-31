@@ -66,10 +66,16 @@ class TorboxClient:
 
         return [parse_torbox_torrent(item) for item in data]
 
-    async def delete_torrent(self, torrent_id: int) -> None:
+    async def _control(self, torrent_id: int, operation: str) -> None:
         async with self._client() as client:
             response = await client.post(
                 "/v1/api/torrents/controltorrent",
-                json={"torrent_id": torrent_id, "operation": "delete"},
+                json={"torrent_id": torrent_id, "operation": operation},
             )
         self._unwrap(response)
+
+    async def pause_torrent(self, torrent_id: int) -> None:
+        await self._control(torrent_id, "pause")
+
+    async def resume_torrent(self, torrent_id: int) -> None:
+        await self._control(torrent_id, "resume")

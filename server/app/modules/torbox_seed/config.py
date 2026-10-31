@@ -9,18 +9,29 @@ class TorboxSeedSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TORBOX_", extra="ignore")
 
-    # Ha üres, a takarítás nem fut.
+    # Ha üres, a helykezelés nem fut.
     api_key: str | None = None
 
-    # Milyen gyakran fusson a takarítás.
-    cleanup_interval_minutes: int = Field(default=30, ge=5)
+    # Milyen gyakran fusson az ellenőrzés.
+    cleanup_interval_minutes: int = Field(default=5, ge=2)
 
-    # Biztonsági minimum: a TorBoxra kerülés után legalább ennyi óráig
-    # biztosan nem törlünk, akkor sem, ha a tracker listáján már nem szerepel
-    # (a tracker kis késéssel regisztrálja az új letöltéseket).
+    # A TorBox-csomag aktív helyeinek száma (Pro: 10).
+    slot_limit: int = Field(default=10, ge=1)
+
+    # Ennyi helynek kell mindig szabadnak lennie.
+    min_free_slots: int = Field(default=2, ge=0)
+
+    # Egy még kötelezett seed legfeljebb ennyi óráig szünetelhet egyszerre.
+    max_pause_hours: float = Field(default=6, gt=0)
+
+    # Biztonsági minimum: a TorBoxra kerülés után legalább ennyi óráig a
+    # torrentet folyamatban lévőnek tekintjük (a tracker késve regisztrál).
     min_seed_hours: float = Field(default=24, ge=0)
 
-    # Próbaüzem: csak naplózza, mit törölne, de nem töröl.
+    # A tracker Hit'n'Run-listáját legfeljebb ilyen gyakran kérdezzük le.
+    hnr_cache_minutes: int = Field(default=15, ge=1)
+
+    # Próbaüzem: csak naplózza, mit csinálna, de nem nyúl a TorBoxhoz.
     cleanup_dry_run: bool = False
 
     @property

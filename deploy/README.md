@@ -119,24 +119,30 @@ A nyilvános TMDB-addon szervere gyakran túlterhelt, ezért a csomag egy saját
 
 Opcionális: a `FANART_API_KEY` sorba fanart.tv-kulcsot írva szebb logókat kapsz.
 
-## TorBox seed-takarítás
+## TorBox-helykezelés
 
-A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak; ha betelt, az új letöltések sorba állnak. A Pro 30 napig seedel, pedig az nCore-nak csak a Hit'n'Run-szabály teljesítése kell.
+A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak; ha betelt, az új letöltések sorba állnak. Ha a `.env`-ben meg van adva a `TORBOX_API_KEY`, a StremHU 5 percenként:
 
-Ha a `.env`-ben meg van adva a `TORBOX_API_KEY`, a StremHU 30 percenként:
+1. **szünetelteti** azokat a seedeket, amelyeknek már nincs kötelezettségük: a tracker Hit'n'Run-ja teljesült, vagy nyilvános torrent. Nem töröl semmit – a fájl a TorBoxon marad (újranézhető), és a TorBox a saját lejárati ideje után törli;
+2. ha **kevesebb mint 2 hely szabad**, a legfrissebb, még kötelezett nCore-seedet ideiglenesen szünetelteti (egyszerre legfeljebb kettőt; a legfrissebbet, mert annak van a legtöbb ideje a határidőig);
+3. az ideiglenesen szüneteltetettet visszakapcsolja, amint van hely, de **legkésőbb 6 óra után** mindenképp – a Hit'n'Run elsőbbséget élvez. Visszakapcsolás után 6 óráig nem szünetelteti újra.
 
-1. lekéri a TorBoxon seedelő torrenteket,
-2. megkeresi, melyik tracker melyik torrentje (csak a StremHU-n át letöltötteket ismeri fel),
-3. lekéri a tracker Hit'n'Run „nem teljesített” listáját,
-4. és törli a TorBoxról azt, ami már nincs rajta, és legalább 24 órája került fel.
+Ismeretlen privát torrenthez, folyamatban lévő letöltéshez, vagy ha a tracker Hit'n'Run-listája nem érhető el, **nem nyúl**.
 
-Ha bármi bizonytalan (nem ismert torrent, nem elérhető Hit'n'Run-lista), **nem töröl**. A naplóban minden törlés látszik:
+**Állapotjelentés:**
 
 ```sh
-docker compose logs stremhu | grep TorBox-takarítás
+docker compose exec stremhu python -m app.modules.torbox_seed.status
 ```
 
-Próbaüzemhez (csak naplóz, nem töröl) állítsd a `.env`-ben `TORBOX_CLEANUP_DRY_RUN=true`-ra, majd `docker compose up -d`.
+Beállítás a `.env`-ben (utána `docker compose up -d`):
+
+| Változó | Alapérték | Jelentés |
+|---|---|---|
+| `TORBOX_MIN_FREE_SLOTS` | 2 | ennyi hely legyen mindig szabad |
+| `TORBOX_MAX_PAUSE_HOURS` | 6 | egy kötelezett seed legfeljebb ennyi órát szünetelhet egyszerre |
+| `TORBOX_SLOT_LIMIT` | 10 | a TorBox-csomag aktív helyei (Pro: 10) |
+| `TORBOX_CLEANUP_DRY_RUN` | false | `true` = próbaüzem, csak naplóz |
 
 ## Frissítés
 

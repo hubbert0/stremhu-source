@@ -67,7 +67,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
-    # TorBox seed-takarítás (hubbert0 fork) – csak ha van TORBOX_API_KEY
+    # TorBox-helykezelés (hubbert0 fork) – csak ha van TORBOX_API_KEY
     torbox_seed_settings = get_torbox_seed_settings()
     if torbox_seed_settings.enabled:
         scheduler.add_job(

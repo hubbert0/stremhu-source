@@ -45,10 +45,15 @@ services:
       - REVERSE_PROXY_DOMAIN=${STREMHU_HOSTNAME}.${TAILNET:?Add meg a .env-ben}
       # Kötelező egyedi titok! Az alapértelmezett nyilvánosan ismert.
       - SESSION_SECRET=${STREMHU_SESSION_SECRET:?Futtasd az init-env.sh-t}
-      # TorBox seed-takarítás: a Hit'n'Run teljesítése után törli a torrentet
-      # a TorBoxról, hogy felszabaduljon az aktív hely. Üres kulccsal nem fut.
+      # TorBox-helykezelés: szünetelteti a seedkötelezettség nélküli
+      # torrenteket, és mindig legalább TORBOX_MIN_FREE_SLOTS helyet szabadon
+      # tart. Üres kulccsal nem fut. Állapot:
+      #   docker compose exec stremhu python -m app.modules.torbox_seed.status
       - TORBOX_API_KEY=${TORBOX_API_KEY:-}
       - TORBOX_CLEANUP_DRY_RUN=${TORBOX_CLEANUP_DRY_RUN:-false}
+      - TORBOX_SLOT_LIMIT=${TORBOX_SLOT_LIMIT:-10}
+      - TORBOX_MIN_FREE_SLOTS=${TORBOX_MIN_FREE_SLOTS:-2}
+      - TORBOX_MAX_PAUSE_HOURS=${TORBOX_MAX_PAUSE_HOURS:-6}
       - TORBOX_MIN_SEED_HOURS=${TORBOX_MIN_SEED_HOURS:-24}
     volumes:
       - stremhu-data:/app/data
