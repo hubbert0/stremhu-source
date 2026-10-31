@@ -380,6 +380,8 @@ services:
       - backrest-data:/data
       - backrest-config:/config
       - backrest-cache:/cache
+      # Az rclone beállítása (Google Drive-kapcsolat), lásd README 9. fejezet
+      - backrest-rclone:/root/.config/rclone
       # Ami a mentésbe kerül (mind csak olvasható):
       - mentes-dump:/userdata/adatbazisok:ro
       - pult-data:/userdata/szerverpult:ro
@@ -443,4 +445,5 @@ volumes:
   backrest-data:
   backrest-config:
   backrest-cache:
+  backrest-rclone:
   mentes-dump:

@@ -366,23 +366,63 @@ A figyelt címek listája: `deploy/gatus/config.yaml`.
 
 A `mentes-dump` konténer 6 óránként egységes másolatot készít a StremHU, az AIOStreams és a LeLibrary adatbázisáról. A **Backrest** ezeket a pult széfjével, a `.env`-vel és a Tailscale-állapotokkal együtt naponta, **titkosítva** egy felhőtárhelyre menti. Ha a szerver tönkremegy, egy új szerveren minden visszaállítható – újratelepítés és újrabeállítás nélkül.
 
-**Egyszeri beállítás** (kb. 10 perc). Tárhelynek a **Backblaze B2**-t ajánlom (10 GB-ig ingyenes, a mentés ennél jóval kisebb):
+**Egyszeri beállítás** (kb. 15 perc). Tárhely: a saját **Google Drive**-od. A mentés néhány tíz MB, és csak titkosítva kerül fel: a Drive-on értelmetlen fájlok látszanak egy `stremhu-mentes` mappában.
 
-1. **Backblaze:** regisztrálj a [backblaze.com](https://www.backblaze.com/sign-up/cloud-storage)-on → *B2 Cloud Storage → Buckets → Create a Bucket*: egyedi név (pl. `stremhu-mentes-` + néhány véletlen betű), **Private**. Utána *Application Keys → Add a New Application Key*: csak ehhez a buckethez, *Read and Write*. Jegyezd fel a **keyID**-t és az **applicationKey**-t (ez utóbbit csak egyszer mutatja).
-2. Nyisd meg: `https://pult.<tailnet>:9898` – első alkalommal hozz létre egy felhasználót és jelszót.
-3. **Add Repo:**
-   - *Repo Name:* `b2`
-   - *Repository URI:* `b2:BUCKET-NEVE:/stremhu`
+**1. Google Drive-kapcsolat (rclone)** – a szerveren:
+
+```bash
+cd ~/stremhu-source/deploy
+docker compose exec backrest rclone config
+```
+
+A kérdésekre így válaszolj (ahol nincs megadva, csak Enter):
+
+| Kérdés | Válasz |
+|---|---|
+| `e/n/d/r/c/s/q>` | `n` (új kapcsolat) |
+| `name>` | `gdrive` |
+| `Storage>` | `drive` |
+| `client_id>`, `client_secret>` | Enter, Enter |
+| `scope>` | `drive.file` – így az rclone **csak a saját maga által létrehozott fájlokat** látja, a Drive többi tartalmát nem |
+| `service_account_file>` | Enter |
+| `Edit advanced config?` | `n` |
+| `Use web browser to automatically authenticate rclone with remote?` | `n` (a szervernek nincs böngészője) |
+
+Ekkor kiír egy sort, ami így kezdődik: `rclone authorize "drive" "eyJ…"`. **Ezt a saját gépeden kell lefuttatni:**
+
+1. Windowson nyiss egy PowerShellt, és telepítsd az rclone-t: `winget install Rclone.Rclone` (vagy töltsd le a [rclone.org/downloads](https://rclone.org/downloads/) oldalról, és csomagold ki).
+2. Nyiss egy **új** PowerShell-ablakot, és illeszd be a szerver által kiírt teljes `rclone authorize "drive" "eyJ…"` sort.
+3. Megnyílik a böngésző: jelentkezz be a Google-fiókodba, és engedélyezd.
+4. A PowerShellben megjelenik egy `{"access_token":…}` kezdetű szöveg a `Paste the following into your remote machine --->` és az `<---End paste` sor között. Ezt másold ki (csak a kapcsos zárójeles részt).
+
+Vissza a szerverre:
+
+| Kérdés | Válasz |
+|---|---|
+| `config_token>` | illeszd be a kimásolt szöveget |
+| `Configure this as a Shared Drive (Team Drive)?` | `n` |
+| `Keep this "gdrive" remote?` | `y` |
+| `e/n/d/r/c/s/q>` | `q` (kilépés) |
+
+Ellenőrzés: `docker compose exec backrest rclone about gdrive:` – a Drive méretét és szabad helyét kell kiírnia.
+
+**2. Backrest** – nyisd meg: `https://pult.<tailnet>:9898`, első alkalommal hozz létre egy felhasználót és jelszót.
+
+1. **Add Repo:**
+   - *Repo Name:* `gdrive`
+   - *Repository URI:* `rclone:gdrive:stremhu-mentes`
    - *Password:* hosszú, véletlen jelszó (a *Generate* gombbal) – **mentsd el a Széfbe: enélkül a mentés nem állítható vissza!**
-   - *Env Vars:* `B2_ACCOUNT_ID=` + keyID, és `B2_ACCOUNT_KEY=` + applicationKey
-4. **Add Plan:**
-   - *Plan Name:* `napi`, *Repository:* `b2`
+   - a többi maradhat üresen
+2. **Add Plan:**
+   - *Plan Name:* `napi`, *Repository:* `gdrive`
    - *Paths:* `/userdata`
    - *Schedule:* naponta egyszer (pl. hajnali 4-kor)
    - *Retention:* pl. 7 napi, 4 heti, 6 havi mentés
-5. **Backup Now** – néhány másodperc, utána a *Snapshots* alatt látszik.
+3. **Backup Now** – fél-egy perc, utána a *Snapshots* alatt látszik, a Drive-on pedig megjelenik a `stremhu-mentes` mappa.
 
-Mi kerül a mentésbe (`/userdata`): `adatbazisok` (StremHU, AIOStreams, LeLibrary), `szerverpult` (a pult széfje és szolgáltatáslistája), `lelibrary`, `telepito` (a `.env` és a telepítőcsomag), `tailscale` (a gépek belépési állapota). Visszaállításkor a Backrestben ugyanezt a repót kell felvenni ugyanazzal a jelszóval, majd a *Snapshots* alatt visszaállítani.
+Ha a Google-engedély egyszer lejárna vagy visszavonnád (a mentés hibát jelez): `docker compose exec backrest rclone config reconnect gdrive:`, és ugyanúgy, a saját gépeden kapott kóddal kell megújítani.
+
+Mi kerül a mentésbe (`/userdata`): `adatbazisok` (StremHU, AIOStreams, LeLibrary), `szerverpult` (a pult széfje és szolgáltatáslistája), `lelibrary`, `telepito` (a `.env` és a telepítőcsomag), `tailscale` (a gépek belépési állapota). Visszaállításkor (új szerveren): telepítés után az 1. lépéssel újra fel kell venni a `gdrive` kapcsolatot, a Backrestben ugyanezt a repót ugyanazzal a jelszóval, majd a *Snapshots* alatt visszaállítani.
 
 ## 10. Helyi Szerverpult (Windows)
 
@@ -463,7 +503,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | A LeLibrary-sorok üresek | a TorBox-kulcs és a TMDB-kulcs helyes-e (szerkesztő link); új letöltés pár perc után jelenik meg. Napló: `docker compose logs --tail 100 lelibrary` |
 | Nincs magyar felirat | `docker compose exec feliratok python -m app.selftest IMDB-AZONOSÍTÓ` – ha itt sincs, a feliratok.eu-n sincs fent; napló: `docker compose logs --tail 100 feliratok` |
 | Nem jön értesítés | az ntfy appban pontosan az `NTFY_TOPIC` témára iratkoztál-e fel; napló: `docker compose logs --tail 100 gatus` |
-| A mentés hibát jelez | a Backrest *Operations* lapján látszik az ok (pl. lejárt B2-kulcs); az adatbázis-másolatok: `docker compose logs --tail 20 mentes-dump` |
+| A mentés hibát jelez | a Backrest *Operations* lapján látszik az ok (pl. lejárt Google-engedély: `docker compose exec backrest rclone config reconnect gdrive:`); az adatbázis-másolatok: `docker compose logs --tail 20 mentes-dump` |
 | A LeLibrary nem indul | `docker compose ps` – a `lelibrary-db` és a `lelibrary-redis` állapota `healthy` legyen; memória: `free -h` |
 | A Szerverpult nem nyílik meg | azon az eszközön fut-e a Tailscale? Szerveroldalon: `docker compose exec ts-pult tailscale serve status` |
 | Helyi pult: *Hibás adat: szerver címe* | a címet `https://` és port nélkül írd be ([10. fejezet](#telepítés-és-első-indítás)) |
