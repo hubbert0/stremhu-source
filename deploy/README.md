@@ -106,6 +106,19 @@ https://stremhu-tb.<tailnet>/api/torznab/api?t=caps&apikey=API_KULCS
 
 Ha XML jön vissza, a StremHU rendben van, és az AIOStreams-beállításban lesz a hiba.
 
+## Saját TMDB-addon (magyar címek)
+
+A nyilvános TMDB-addon szervere gyakran túlterhelt, ezért a csomag egy saját példányt is futtat: `https://tmdb.<tailnet>`.
+
+1. **TMDB API-kulcs:** regisztrálj a themoviedb.org-on → Beállítások → API → kérj kulcsot (személyes használat). Az `install.sh` bekéri, vagy a `.env`-ben a `TMDB_API_KEY` sorba írhatod.
+2. Nyisd meg: `https://tmdb.<tailnet>/configure`
+   - nyelv: **Magyar (hu-HU)**
+   - **IMDb Integration: bekapcsolva** – enélkül a StremHU nem talál magyar torrentet
+   - válaszd ki a katalógusokat, majd **Install**
+3. A Stremióban töröld a régi (nyilvános) The Movie Database Addont.
+
+Opcionális: a `FANART_API_KEY` sorba fanart.tv-kulcsot írva szebb logókat kapsz.
+
 ## TorBox seed-takarítás
 
 A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak; ha betelt, az új letöltések sorba állnak. A Pro 30 napig seedel, pedig az nCore-nak csak a Hit'n'Run-szabály teljesítése kell.

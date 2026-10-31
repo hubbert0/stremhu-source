@@ -93,6 +93,37 @@ services:
       - aiostreams-data:/app/data
     restart: unless-stopped
 
+  # ------------------------------------------------------- TMDB-addon (magyar)
+  # Saját példány a túlterhelt nyilvános szerver helyett. Beállítás és
+  # telepítés: https://${TMDB_HOSTNAME}.${TAILNET}/configure
+  ts-tmdb:
+    image: tailscale/tailscale:latest
+    hostname: ${TMDB_HOSTNAME:-tmdb}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-tmdb-state:/var/lib/tailscale
+      - ./tailscale/tmdb.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  tmdb:
+    image: mrcanelas/tmdb-addon:latest
+    network_mode: service:ts-tmdb
+    depends_on:
+      - ts-tmdb
+    environment:
+      - PORT=1337
+      - NODE_ENV=production
+      - HOST_NAME=https://${TMDB_HOSTNAME:-tmdb}.${TAILNET}
+      - TMDB_API=${TMDB_API_KEY:-}
+      # A Fanart-kulcs opcionális (szebb logók). Kulcs nélkül az addon nem
+      # indulna el, ezért helyőrzőt kap; a logók ilyenkor a TMDB-ből jönnek.
+      - FANART_API=${FANART_API_KEY:-nincs}
+    restart: unless-stopped
+
   # -------------------------------------------------------------- StremThru
   stremthru:
     image: muniftanjim/stremthru:latest
@@ -109,6 +140,7 @@ services:
 volumes:
   ts-stremhu-state:
   ts-aiostreams-state:
+  ts-tmdb-state:
   stremhu-data:
   aiostreams-data:
   stremthru-data:

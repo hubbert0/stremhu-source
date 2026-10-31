@@ -49,29 +49,54 @@ if grep -q '^TS_AUTHKEY=tskey-auth-XXXXXXXXXXXX' .env; then
   sed -i "s|^TS_AUTHKEY=.*|TS_AUTHKEY=${TS_KEY_VALUE}|" .env
 fi
 
-if ! grep -q '^TORBOX_API_KEY=' .env; then
-  printf '\nTORBOX_API_KEY=\n' >> .env
-fi
-
-if grep -q '^TORBOX_API_KEY=$' .env; then
-  printf 'TorBox API-kulcs a seed-takarításhoz (Enter = kihagyás): '
-  read -r TORBOX_KEY_VALUE </dev/tty
-  if [ -n "${TORBOX_KEY_VALUE}" ]; then
-    sed -i "s|^TORBOX_API_KEY=.*|TORBOX_API_KEY=${TORBOX_KEY_VALUE}|" .env
+# Régebbi .env-ekből hiányzó sorok pótlása.
+ensure_line() {
+  if ! grep -q "^$1=" .env; then
+    printf '\n%s=%s\n' "$1" "$2" >> .env
   fi
-fi
+}
+ensure_line TORBOX_API_KEY ""
+ensure_line TMDB_HOSTNAME "tmdb"
+ensure_line TMDB_API_KEY ""
+ensure_line FANART_API_KEY ""
+
+# Üres kulcs esetén rákérdez (Enter = kihagyás).
+ask_key() {
+  if grep -q "^$1=$" .env; then
+    printf '%s (Enter = kihagyás): ' "$2"
+    read -r VALUE </dev/tty
+    if [ -n "${VALUE}" ]; then
+      sed -i "s|^$1=.*|$1=${VALUE}|" .env
+    fi
+  fi
+}
+ask_key TORBOX_API_KEY "TorBox API-kulcs a seed-takarításhoz"
+ask_key TMDB_API_KEY "TMDB API-kulcs a saját TMDB-addonhoz"
 
 echo "Konténerek letöltése és indítása..."
 docker compose pull
 docker compose up -d
 docker compose ps
 
+# Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
+sleep 15
+for TS in ts-stremhu ts-aiostreams ts-tmdb; do
+  STATUS="$(docker compose exec -T "${TS}" tailscale status 2>/dev/null || true)"
+  if printf '%s' "${STATUS}" | grep -q 'Logged out\|NeedsLogin'; then
+    echo
+    echo "A(z) ${TS} még nincs bejelentkezve a Tailscale-be. Nyisd meg böngészőben:"
+    printf '%s\n' "${STATUS}" | grep -o 'https://login.tailscale.com/[^ ]*' | head -1
+  fi
+done
+
 TAILNET_NOW="$(grep '^TAILNET=' .env | cut -d= -f2)"
 STREMHU_NOW="$(grep '^STREMHU_HOSTNAME=' .env | cut -d= -f2)"
 AIO_NOW="$(grep '^AIOSTREAMS_HOSTNAME=' .env | cut -d= -f2)"
+TMDB_NOW="$(grep '^TMDB_HOSTNAME=' .env | cut -d= -f2)"
 
 echo
 echo "Kész. Pár perc múlva elérhető:"
 echo "  StremHU:    https://${STREMHU_NOW}.${TAILNET_NOW}"
 echo "  AIOStreams: https://${AIO_NOW}.${TAILNET_NOW}/stremio/configure"
+echo "  TMDB-addon: https://${TMDB_NOW}.${TAILNET_NOW}/configure"
 echo "AIOStreams-jelszó (ha elfelejtenéd):  grep AIOSTREAMS_AUTH ${DIR}/deploy/.env"
