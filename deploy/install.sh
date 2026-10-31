@@ -49,6 +49,18 @@ if grep -q '^TS_AUTHKEY=tskey-auth-XXXXXXXXXXXX' .env; then
   sed -i "s|^TS_AUTHKEY=.*|TS_AUTHKEY=${TS_KEY_VALUE}|" .env
 fi
 
+if ! grep -q '^TORBOX_API_KEY=' .env; then
+  printf '\nTORBOX_API_KEY=\n' >> .env
+fi
+
+if grep -q '^TORBOX_API_KEY=$' .env; then
+  printf 'TorBox API-kulcs a seed-takarításhoz (Enter = kihagyás): '
+  read -r TORBOX_KEY_VALUE </dev/tty
+  if [ -n "${TORBOX_KEY_VALUE}" ]; then
+    sed -i "s|^TORBOX_API_KEY=.*|TORBOX_API_KEY=${TORBOX_KEY_VALUE}|" .env
+  fi
+fi
+
 echo "Konténerek letöltése és indítása..."
 docker compose pull
 docker compose up -d

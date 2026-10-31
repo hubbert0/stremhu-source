@@ -45,6 +45,11 @@ services:
       - REVERSE_PROXY_DOMAIN=${STREMHU_HOSTNAME}.${TAILNET:?Add meg a .env-ben}
       # Kötelező egyedi titok! Az alapértelmezett nyilvánosan ismert.
       - SESSION_SECRET=${STREMHU_SESSION_SECRET:?Futtasd az init-env.sh-t}
+      # TorBox seed-takarítás: a Hit'n'Run teljesítése után törli a torrentet
+      # a TorBoxról, hogy felszabaduljon az aktív hely. Üres kulccsal nem fut.
+      - TORBOX_API_KEY=${TORBOX_API_KEY:-}
+      - TORBOX_CLEANUP_DRY_RUN=${TORBOX_CLEANUP_DRY_RUN:-false}
+      - TORBOX_MIN_SEED_HOURS=${TORBOX_MIN_SEED_HOURS:-24}
     volumes:
       - stremhu-data:/app/data
       # Opcionális: a StremHU saját letöltései egy nagy HDD-re

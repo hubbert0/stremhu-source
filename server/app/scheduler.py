@@ -6,6 +6,8 @@ from app.modules.network.background_tasks import (
     run_network_ip_sync,
 )
 from app.modules.pairings.background_tasks import run_expired_pairings_cleanup
+from app.modules.torbox_seed.background_tasks import run_torbox_seed_cleanup
+from app.modules.torbox_seed.config import get_torbox_seed_settings
 from app.modules.torrent_files.background_tasks import (
     run_torrent_files_retention_cleanup,
 )
@@ -64,5 +66,16 @@ def setup_scheduler() -> AsyncIOScheduler:
         id="ssl_certificate_check",
         replace_existing=True,
     )
+
+    # TorBox seed-takarítás (hubbert0 fork) – csak ha van TORBOX_API_KEY
+    torbox_seed_settings = get_torbox_seed_settings()
+    if torbox_seed_settings.enabled:
+        scheduler.add_job(
+            run_torbox_seed_cleanup,
+            trigger="interval",
+            minutes=torbox_seed_settings.cleanup_interval_minutes,
+            id="torbox_seed_cleanup",
+            replace_existing=True,
+        )
 
     return scheduler

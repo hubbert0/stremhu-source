@@ -106,6 +106,25 @@ https://stremhu-tb.<tailnet>/api/torznab/api?t=caps&apikey=API_KULCS
 
 Ha XML jön vissza, a StremHU rendben van, és az AIOStreams-beállításban lesz a hiba.
 
+## TorBox seed-takarítás
+
+A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak; ha betelt, az új letöltések sorba állnak. A Pro 30 napig seedel, pedig az nCore-nak csak a Hit'n'Run-szabály teljesítése kell.
+
+Ha a `.env`-ben meg van adva a `TORBOX_API_KEY`, a StremHU 30 percenként:
+
+1. lekéri a TorBoxon seedelő torrenteket,
+2. megkeresi, melyik tracker melyik torrentje (csak a StremHU-n át letöltötteket ismeri fel),
+3. lekéri a tracker Hit'n'Run „nem teljesített” listáját,
+4. és törli a TorBoxról azt, ami már nincs rajta, és legalább 24 órája került fel.
+
+Ha bármi bizonytalan (nem ismert torrent, nem elérhető Hit'n'Run-lista), **nem töröl**. A naplóban minden törlés látszik:
+
+```sh
+docker compose logs stremhu | grep TorBox-takarítás
+```
+
+Próbaüzemhez (csak naplóz, nem töröl) állítsd a `.env`-ben `TORBOX_CLEANUP_DRY_RUN=true`-ra, majd `docker compose up -d`.
+
 ## Frissítés
 
 ```sh
