@@ -366,47 +366,42 @@ A figyelt címek listája: `deploy/gatus/config.yaml`.
 
 A `mentes-dump` konténer 6 óránként egységes másolatot készít a StremHU, az AIOStreams és a LeLibrary adatbázisáról. A **Backrest** ezeket a pult széfjével, a `.env`-vel és a Tailscale-állapotokkal együtt naponta, **titkosítva** egy felhőtárhelyre menti. Ha a szerver tönkremegy, egy új szerveren minden visszaállítható – újratelepítés és újrabeállítás nélkül.
 
-**Egyszeri beállítás** (kb. 15 perc). Tárhely: a saját **Google Drive**-od. A mentés néhány tíz MB, és csak titkosítva kerül fel: a Drive-on értelmetlen fájlok látszanak egy `stremhu-mentes` mappában.
+**Egyszeri beállítás** (kb. 25 perc). Tárhely: a saját **Google Drive**-od. A mentés néhány tíz MB, és csak titkosítva kerül fel: a Drive-on értelmetlen fájlok látszanak egy `stremhu-mentes` mappában.
 
-**1. Google Drive-kapcsolat (rclone)** – a szerveren:
+**1. Saját Google-kulcs** (Google Cloud, a böngészőben). Az rclone közös Google-kulcsát 2026 során leállítják, ezért saját kulcs kell. **Még az első mentés előtt csináld meg:** `drive.file` jogosultsággal minden kulcs csak a saját maga által létrehozott fájlokat látja, így egy másik kulccsal készült mentéshez később nem férne hozzá.
 
-```bash
-cd ~/stremhu-source/deploy
-docker compose exec backrest rclone config
-```
+Minden oldalon ellenőrizd, hogy felül a `stremhu-mentes` projekt van kiválasztva.
 
-A kérdésekre így válaszolj (ahol nincs megadva, csak Enter):
+1. [console.cloud.google.com](https://console.cloud.google.com/) – bejelentkezés **azzal a Google-fiókkal, amelyiknek a Drive-jára mentesz**.
+2. [Új projekt](https://console.cloud.google.com/projectcreate): *Project name:* `stremhu-mentes` → **Create**, majd az értesítésben **Select project**.
+3. [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com) → **Enable**.
+4. [Google Auth Platform](https://console.cloud.google.com/auth/overview) → **Get started**: *App name* `StremHU mentés`, *User support email* a saját címed → *Audience:* **External** → *Contact information:* a saját címed → elfogadás → **Create**.
+5. [Data access](https://console.cloud.google.com/auth/scopes) → **Add or remove scopes** → szűrő: `drive.file` → pipáld be a `.../auth/drive.file` sort → **Update** → **Save**.
+6. [Audience](https://console.cloud.google.com/auth/audience) → **Publish app** → **Confirm**. (Tesztüzemben a Google hetente érvényteleníti a belépést, és a mentés leállna.)
+7. [Clients](https://console.cloud.google.com/auth/clients) → **Create client** → *Application type:* **Desktop app**, *Name:* `rclone` → **Create**. A **Client ID**-t és a **Client secret**-et másold ki és tedd a Széfbe – a secretet a Google csak most mutatja meg.
 
-| Kérdés | Válasz |
-|---|---|
-| `n/s/q>` (vagy `e/n/d/r/c/s/q>`) | `n` (új kapcsolat) |
-| `name>` | `gdrive` |
-| `Storage>` | `drive` |
-| `client_id>`, `client_secret>` | Enter, Enter |
-| `scope>` | `drive.file` – így az rclone **csak a saját maga által létrehozott fájlokat** látja, a Drive többi tartalmát nem |
-| `service_account_file>` | Enter |
-| `Edit advanced config?` | `n` |
-| `Use web browser to automatically authenticate rclone with remote?` | `n` (a szervernek nincs böngészője) |
+**2. Google Drive-kapcsolat (rclone)** – a saját gépeden készül, mert ott van böngésző, utána átkerül a szerverre.
 
-Ekkor kiír egy sort, ami így kezdődik: `rclone authorize "drive" "eyJ…"`. **Ezt a saját gépeden kell lefuttatni:**
+1. Windowson, PowerShellben: `winget install Rclone.Rclone`, utána nyiss egy **új** PowerShell-ablakot.
+2. Futtasd (bekéri a Client ID-t és a secretet, majd megnyitja a böngészőt):
+   ```powershell
+   $id = Read-Host "Client ID"; $sec = Read-Host "Client secret"; rclone config create gdrive drive scope=drive.file "client_id=$id" "client_secret=$sec"
+   ```
+3. A böngészőben válaszd ki a fiókot. A *„A Google nem ellenőrizte ezt az alkalmazást”* figyelmeztetésnél: **Speciális** → **Ugrás: StremHU mentés (nem biztonságos)** – ez a saját alkalmazásod. Ha jelölőnégyzet van, pipáld be → **Folytatás**.
+4. Küldd át a kapcsolatot a szerverre, majd töröld a gépedről (a belépési kulcs van benne):
+   ```powershell
+   scp "$env:APPDATA\rclone\rclone.conf" root@SZERVER-CÍME:/tmp/rclone.conf
+   Remove-Item "$env:APPDATA\rclone\rclone.conf"
+   ```
+5. A szerveren:
+   ```bash
+   cd ~/stremhu-source/deploy
+   docker compose cp /tmp/rclone.conf backrest:/root/.config/rclone/rclone.conf && rm /tmp/rclone.conf
+   docker compose exec backrest rclone about gdrive:
+   ```
+   Az utolsó parancsnak a Drive méretét és szabad helyét kell kiírnia, a *„shared Google Drive client_id”* figyelmeztetés nélkül.
 
-1. Windowson nyiss egy PowerShellt, és telepítsd az rclone-t: `winget install Rclone.Rclone` (vagy töltsd le a [rclone.org/downloads](https://rclone.org/downloads/) oldalról, és csomagold ki).
-2. Nyiss egy **új** PowerShell-ablakot, és illeszd be a szerver által kiírt teljes `rclone authorize "drive" "eyJ…"` sort.
-3. Megnyílik a böngésző: jelentkezz be a Google-fiókodba, és engedélyezd.
-4. A PowerShellben megjelenik egy `{"access_token":…}` kezdetű szöveg a `Paste the following into your remote machine --->` és az `<---End paste` sor között. Ezt másold ki (csak a kapcsos zárójeles részt).
-
-Vissza a szerverre:
-
-| Kérdés | Válasz |
-|---|---|
-| `config_token>` | illeszd be a kimásolt szöveget |
-| `Configure this as a Shared Drive (Team Drive)?` | `n` |
-| `Keep this "gdrive" remote?` | `y` |
-| `e/n/d/r/c/s/q>` | `q` (kilépés) |
-
-Ellenőrzés: `docker compose exec backrest rclone about gdrive:` – a Drive méretét és szabad helyét kell kiírnia.
-
-**2. Backrest** – nyisd meg: `https://pult.<tailnet>:9898`, első alkalommal hozz létre egy felhasználót és jelszót.
+**3. Backrest** – nyisd meg: `https://pult.<tailnet>:9898`, első alkalommal hozz létre egy felhasználót és jelszót.
 
 1. **Add Repo:**
    - *Repo Name:* `gdrive`
@@ -420,9 +415,9 @@ Ellenőrzés: `docker compose exec backrest rclone about gdrive:` – a Drive m�
    - *Retention:* pl. 7 napi, 4 heti, 6 havi mentés
 3. **Backup Now** – fél-egy perc, utána a *Snapshots* alatt látszik, a Drive-on pedig megjelenik a `stremhu-mentes` mappa.
 
-Ha a Google-engedély egyszer lejárna vagy visszavonnád (a mentés hibát jelez): `docker compose exec backrest rclone config reconnect gdrive:`, és ugyanúgy, a saját gépeden kapott kóddal kell megújítani.
+Ha a Google-engedély egyszer lejárna vagy visszavonnád (a mentés hibát jelez), a 2. lépést kell megismételni – ugyanazzal a Client ID-val és secrettel, különben az új kapcsolat nem látja a korábbi mentéseket.
 
-Mi kerül a mentésbe (`/userdata`): `adatbazisok` (StremHU, AIOStreams, LeLibrary), `szerverpult` (a pult széfje és szolgáltatáslistája), `lelibrary`, `telepito` (a `.env` és a telepítőcsomag), `tailscale` (a gépek belépési állapota). Visszaállításkor (új szerveren): telepítés után az 1. lépéssel újra fel kell venni a `gdrive` kapcsolatot, a Backrestben ugyanezt a repót ugyanazzal a jelszóval, majd a *Snapshots* alatt visszaállítani.
+Mi kerül a mentésbe (`/userdata`): `adatbazisok` (StremHU, AIOStreams, LeLibrary), `szerverpult` (a pult széfje és szolgáltatáslistája), `lelibrary`, `telepito` (a `.env` és a telepítőcsomag), `tailscale` (a gépek belépési állapota). Visszaállításkor (új szerveren): telepítés után a 2. lépéssel – ugyanazzal a Client ID-val és secrettel – újra fel kell venni a `gdrive` kapcsolatot, a Backrestben ugyanezt a repót ugyanazzal a jelszóval, majd a *Snapshots* alatt visszaállítani.
 
 ## 10. Helyi Szerverpult (Windows)
 
@@ -503,7 +498,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | A LeLibrary-sorok üresek | a TorBox-kulcs és a TMDB-kulcs helyes-e (szerkesztő link); új letöltés pár perc után jelenik meg. Napló: `docker compose logs --tail 100 lelibrary` |
 | Nincs magyar felirat | `docker compose exec feliratok python -m app.selftest IMDB-AZONOSÍTÓ` – ha itt sincs, a feliratok.eu-n sincs fent; napló: `docker compose logs --tail 100 feliratok` |
 | Nem jön értesítés | az ntfy appban pontosan az `NTFY_TOPIC` témára iratkoztál-e fel; napló: `docker compose logs --tail 100 gatus` |
-| A mentés hibát jelez | a Backrest *Operations* lapján látszik az ok (pl. lejárt Google-engedély: `docker compose exec backrest rclone config reconnect gdrive:`); az adatbázis-másolatok: `docker compose logs --tail 20 mentes-dump` |
+| A mentés hibát jelez | a Backrest *Operations* lapján látszik az ok (pl. lejárt Google-engedély: a 9. fejezet Mentés részének 2. lépése, ugyanazzal a Client ID-val); az adatbázis-másolatok: `docker compose logs --tail 20 mentes-dump` |
 | A LeLibrary nem indul | `docker compose ps` – a `lelibrary-db` és a `lelibrary-redis` állapota `healthy` legyen; memória: `free -h` |
 | A Szerverpult nem nyílik meg | azon az eszközön fut-e a Tailscale? Szerveroldalon: `docker compose exec ts-pult tailscale serve status` |
 | Helyi pult: *Hibás adat: szerver címe* | a címet `https://` és port nélkül írd be ([10. fejezet](#telepítés-és-első-indítás)) |
