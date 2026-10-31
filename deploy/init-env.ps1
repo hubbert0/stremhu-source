@@ -28,14 +28,17 @@ $envPath = Join-Path $PSScriptRoot '.env'
 $content = [System.IO.File]::ReadAllText($examplePath, [System.Text.Encoding]::UTF8)
 
 $aioPass = (New-Hex).Substring(0, 20)
+$pultPass = (New-Hex).Substring(0, 20)
 
 $content = $content -replace '(?m)^STREMHU_SESSION_SECRET=.*$', ('STREMHU_SESSION_SECRET=' + (New-Hex))
 $content = $content -replace '(?m)^AIOSTREAMS_SECRET_KEY=.*$', ('AIOSTREAMS_SECRET_KEY=' + (New-Hex))
 $content = $content -replace '(?m)^AIOSTREAMS_AUTH=.*$', ('AIOSTREAMS_AUTH=admin:' + $aioPass)
+$content = $content -replace '(?m)^PULT_PASSWORD=.*$', ('PULT_PASSWORD=' + $pultPass)
 
 # UTF-8 BOM nélkül, mert a Docker Compose a BOM-ot nem szereti.
 [System.IO.File]::WriteAllText($envPath, $content, $utf8NoBom)
 
 Write-Host 'Kész: .env létrehozva.'
 Write-Host ("AIOStreams bejelentkezés:  admin / " + $aioPass)
+Write-Host ("Szerverpult bejelentkezés: admin / " + $pultPass)
 Write-Host 'Most írd be a .env-be a TAILNET és TS_AUTHKEY értékét:  notepad .env'

@@ -9,6 +9,10 @@
 #   https://${AIOSTREAMS_HOSTNAME}.${TAILNET}  – AIOStreams (ezt adod hozzá a Stremióhoz)
 # A StremThru csak a belső Docker-hálózaton látszik.
 #
+# Szerverpult (csak a tailnetről, Funnel nélkül):
+#   https://${PULT_HOSTNAME}.${TAILNET}        – kezelőfelület, széf, Docker-műveletek
+#   https://${PULT_HOSTNAME}.${TAILNET}:8443   – webes terminál a szerveren
+#
 # Beállítás: deploy/README.md
 
 name: stremhu-torbox
@@ -146,6 +150,85 @@ services:
       - stremthru-data:/app/data
     restart: unless-stopped
 
+  # ---------------------------------------------------------- Szerverpult
+  # Csak a tailnetről érhető el (a pult.json-ban nincs Funnel), és a
+  # .env-ben lévő PULT_USER / PULT_PASSWORD kell hozzá. Root jogú
+  # hozzáférést ad a szerverhez, ezért SOHA ne kapcsolj rá Funnelt.
+  ts-pult:
+    image: tailscale/tailscale:latest
+    hostname: ${PULT_HOSTNAME:-pult}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-pult-state:/var/lib/tailscale
+      - ./tailscale/pult.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  pult:
+    image: ${PULT_IMAGE:-ghcr.io/hubbert0/stremhu-pult:latest}
+    # Ha az image nem tölthető le, a szerver helyben építi meg.
+    build: ./pult
+    network_mode: service:ts-pult
+    depends_on:
+      - ts-pult
+    environment:
+      - TZ=Europe/Budapest
+      - PULT_USER=${PULT_USER:-admin}
+      - PULT_PASSWORD=${PULT_PASSWORD:?Futtasd az install.sh-t}
+      - PULT_IMAGE=${PULT_IMAGE:-ghcr.io/hubbert0/stremhu-pult:latest}
+      - PULT_HOSTNAME=${PULT_HOSTNAME:-pult}
+      - TAILNET=${TAILNET}
+      - STREMHU_HOSTNAME=${STREMHU_HOSTNAME}
+      - AIOSTREAMS_HOSTNAME=${AIOSTREAMS_HOSTNAME}
+      - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
+      - REPO_DIR=${REPO_DIR:-/root/stremhu-source}
+    volumes:
+      # A konténerek kezeléséhez és a frissítéshez (git pull + compose).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${REPO_DIR:-/root/stremhu-source}:${REPO_DIR:-/root/stremhu-source}
+      # Szolgáltatáslista és a (böngészőben titkosított) széf.
+      - pult-data:/data
+    restart: unless-stopped
+
+  terminal:
+    image: ${PULT_IMAGE:-ghcr.io/hubbert0/stremhu-pult:latest}
+    build: ./pult
+    network_mode: service:ts-pult
+    depends_on:
+      - ts-pult
+    # A webes terminál a gazdagép shelljét nyitja meg (nsenter), ehhez kell.
+    pid: host
+    privileged: true
+    command:
+      - ttyd
+      - -W
+      - -i
+      - lo
+      - -p
+      - "7681"
+      - -c
+      - "${PULT_USER:-admin}:${PULT_PASSWORD:?Futtasd az install.sh-t}"
+      - -t
+      - titleFixed=Contabo
+      - -t
+      - fontSize=15
+      - nsenter
+      - -t
+      - "1"
+      - -m
+      - -u
+      - -i
+      - -n
+      - -p
+      - --
+      - /bin/bash
+      - -lc
+      - "cd ${REPO_DIR:-/root/stremhu-source}/deploy 2>/dev/null; exec bash -l"
+    restart: unless-stopped
+
 volumes:
   ts-stremhu-state:
   ts-aiostreams-state:
@@ -153,3 +236,5 @@ volumes:
   stremhu-data:
   aiostreams-data:
   stremthru-data:
+  ts-pult-state:
+  pult-data:

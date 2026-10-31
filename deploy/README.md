@@ -144,15 +144,31 @@ Beállítás a `.env`-ben (utána `docker compose up -d`):
 | `TORBOX_SLOT_LIMIT` | 10 | a TorBox-csomag aktív helyei (Pro: 10) |
 | `TORBOX_CLEANUP_DRY_RUN` | false | `true` = próbaüzem, csak naplóz |
 
+## Szerverpult
+
+Böngészős kezelőfelület a szerverhez: `https://pult.<tailnet>` (felhasználó: `PULT_USER`, jelszó: `PULT_PASSWORD` a `.env`-ből; az `install.sh` a végén kiírja). **Csak a tailnetedről érhető el** – a telefonodon/gépeden fusson a Tailscale.
+
+| Fül | Mire jó |
+|---|---|
+| **Áttekintés** | a szolgáltatások címei és elérhetősége (zöld/piros); a lista szerkeszthető |
+| **Docker** | konténerek állapota, napló, újraindítás |
+| **Műveletek** | frissítés (git pull + új image-ek), TorBox-jelentés, lemezhely, a pult frissítése |
+| **Széf** | jelszavak, kulcsok, címek (Tailscale, Contabo VNC, TorBox…). A böngésző titkosítja egy mesterjelszóval (AES-256), a szerver csak titkosított adatot lát. **A mesterjelszó nem állítható vissza** – időnként töltsd le a titkosított mentést. |
+| **Terminál** | teljes root parancssor a szerveren: `https://pult.<tailnet>:8443` |
+
+A Contabo VNC-je akkor kell, ha a szerver nem indul el vagy nem érhető el a hálózaton – ilyenkor a pult sem fut, ezért a VNC-adatokat érdemes a széfen kívül is (pl. jelszókezelőben) megőrizni.
+
+> A pult root jogot ad a szerverhez: soha ne kapcsolj rá Funnelt, és ne add ki a jelszavát.
+
 ## Frissítés
 
 ```sh
-cd ~/stremhu-source/deploy
-docker compose pull
-docker compose up -d
+cd ~/stremhu-source && git pull && cd deploy && sh install.sh
 ```
 
-A `torbox` ágra került minden módosítás után a GitHub automatikusan új image-et épít; a fenti parancs ezt húzza le.
+Vagy a Szerverpultban: **Műveletek → Frissítés**.
+
+A `torbox` ágra került minden módosítás után a GitHub automatikusan új image-et épít; a frissítés ezt húzza le.
 
 **Ha a hivatalos StremHU beolvasztja a #283-as PR-t,** a `.env`-ben a `STREMHU_IMAGE` sor átírható `s4pp1/stremhu-source:latest`-re, és a fork feleslegessé válik.
 

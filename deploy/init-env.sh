@@ -30,8 +30,12 @@ sed -i "s|^AIOSTREAMS_SECRET_KEY=.*|AIOSTREAMS_SECRET_KEY=$(rand_hex)|" .env
 AIO_PASS="$(rand_pass)"
 sed -i "s|^AIOSTREAMS_AUTH=.*|AIOSTREAMS_AUTH=admin:${AIO_PASS}|" .env
 
+PULT_PASS="$(rand_pass)"
+sed -i "s|^PULT_PASSWORD=.*|PULT_PASSWORD=${PULT_PASS}|" .env
+
 chmod 600 .env
 
 echo "Kész: .env létrehozva."
 echo "AIOStreams bejelentkezés:  admin / ${AIO_PASS}"
+echo "Szerverpult bejelentkezés: admin / ${PULT_PASS}"
 echo "Most írd be a .env-be a TAILNET és TS_AUTHKEY értékét:  nano .env"
