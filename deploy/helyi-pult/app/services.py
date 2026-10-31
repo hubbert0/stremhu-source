@@ -63,6 +63,26 @@ def default_services(settings: Settings) -> list[Service]:
                 "A TorBoxon lévő filmek és sorozatok a Stremio kezdőlapján",
             ),
             _service(
+                "Magyar feliratok",
+                f"https://{host.felirat}.{tn}/",
+                "Szerver",
+                "Felirataddon a feliratok.eu-hoz",
+            ),
+            _service(
+                "Állapotfigyelő (tailnet)",
+                f"https://{host.pult}.{tn}:8090",
+                "Szerver",
+                "Gatus – csak Tailscale-lel bekapcsolt eszközről",
+                check=False,
+            ),
+            _service(
+                "Mentés (tailnet)",
+                f"https://{host.pult}.{tn}:9898",
+                "Szerver",
+                "Backrest – csak Tailscale-lel bekapcsolt eszközről",
+                check=False,
+            ),
+            _service(
                 "Szerverpult (tailnet)",
                 f"https://{host.pult}.{tn}",
                 "Szerver",

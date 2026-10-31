@@ -5,6 +5,12 @@
     },
     "8443": {
       "HTTPS": true
+    },
+    "8090": {
+      "HTTPS": true
+    },
+    "9898": {
+      "HTTPS": true
     }
   },
   "Web": {
@@ -19,6 +25,20 @@
       "Handlers": {
         "/": {
           "Proxy": "http://127.0.0.1:7681"
+        }
+      }
+    },
+    "${TS_CERT_DOMAIN}:8090": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:18090"
+        }
+      }
+    },
+    "${TS_CERT_DOMAIN}:9898": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:19898"
         }
       }
     }

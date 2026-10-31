@@ -21,6 +21,7 @@ ENV_KEYS = (
     "TMDB_HOSTNAME",
     "PULT_HOSTNAME",
     "LELIBRARY_HOSTNAME",
+    "FELIRAT_HOSTNAME",
 )
 
 
@@ -66,6 +67,7 @@ def apply_env(settings: Settings, env: dict[str, str]) -> Settings:
         "TMDB_HOSTNAME": "tmdb",
         "PULT_HOSTNAME": "pult",
         "LELIBRARY_HOSTNAME": "lelibrary",
+        "FELIRAT_HOSTNAME": "felirat",
     }
     candidates: list[tuple[str, str | None, str]] = [("TAILNET", None, "tailnet")]
     candidates += [(key, "hostnames", field) for key, field in mapping.items()]

@@ -41,5 +41,6 @@ def load_settings() -> Settings:
             "tmdb": os.environ.get("TMDB_HOSTNAME", "tmdb"),
             "pult": os.environ.get("PULT_HOSTNAME", "pult"),
             "lelibrary": os.environ.get("LELIBRARY_HOSTNAME", "lelibrary"),
+            "felirat": os.environ.get("FELIRAT_HOSTNAME", "felirat"),
         },
     )

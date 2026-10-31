@@ -1,0 +1,117 @@
+# Gatus – állapotfigyelő a StremHU-rendszerhez.
+# Csak a tailnetről érhető el: https://<PULT_HOSTNAME>.<TAILNET>:8090 (belül: 18090)
+# Ha valami 3 egymás utáni ellenőrzésen elbukik, értesítést küld a telefonodra
+# (ntfy alkalmazás, a téma neve a .env NTFY_TOPIC sorában), és akkor is, amikor helyreállt.
+# A ${...} értékeket a .env-ből kapja.
+
+web:
+  address: 127.0.0.1
+  port: 18090
+
+storage:
+  type: sqlite
+  path: /data/data.db
+
+ui:
+  title: StremHU – állapot
+  header: StremHU – állapot
+
+alerting:
+  ntfy:
+    topic: "${NTFY_TOPIC}"
+    url: "https://ntfy.sh"
+    priority: 4
+    default-alert:
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  # --- A saját szolgáltatások, kívülről (ahogy a Stremio is látja) ----------
+  - name: StremHU
+    group: Szerver
+    url: "https://${STREMHU_HOSTNAME}.${TAILNET}/"
+    interval: 2m
+    conditions:
+      - "[STATUS] < 500"
+    alerts:
+      - type: ntfy
+        description: "A StremHU nem válaszol"
+
+  - name: AIOStreams
+    group: Szerver
+    url: "https://${AIOSTREAMS_HOSTNAME}.${TAILNET}/api/v1/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "Az AIOStreams nem válaszol – a Stremióban nem lesz találat"
+
+  - name: TMDB-addon
+    group: Szerver
+    url: "https://${TMDB_HOSTNAME}.${TAILNET}/manifest.json"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "A TMDB-addon nem válaszol – a magyar címek és katalógusok nem töltődnek"
+
+  - name: LeLibrary
+    group: Szerver
+    url: "https://${LELIBRARY_HOSTNAME}.${TAILNET}/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "A LeLibrary nem válaszol – a TorBox-könyvtár sorai üresek"
+
+  - name: Magyar feliratok
+    group: Szerver
+    url: "https://${FELIRAT_HOSTNAME}.${TAILNET}/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "A felirat-addon nem válaszol"
+
+  - name: StremThru (belső)
+    group: Szerver
+    url: "http://stremthru:8080/v0/health"
+    interval: 2m
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: ntfy
+        description: "A StremThru nem válaszol – a TorBoxra küldés nem működik"
+
+  # --- Külső szolgáltatások (ezeken nem tudunk segíteni, de jó tudni) -------
+  - name: TorBox
+    group: Külső
+    url: "https://api.torbox.app/"
+    interval: 5m
+    conditions:
+      - "[STATUS] < 500"
+    alerts:
+      - type: ntfy
+        description: "A TorBox nem érhető el – a lejátszás és a letöltés is akadhat"
+
+  - name: nCore
+    group: Külső
+    url: "https://ncore.pro/"
+    interval: 5m
+    conditions:
+      - "[STATUS] < 500"
+    alerts:
+      - type: ntfy
+        description: "Az nCore nem érhető el – nincs új magyar találat"
+
+  - name: feliratok.eu
+    group: Külső
+    url: "https://feliratok.eu/"
+    interval: 10m
+    conditions:
+      - "[STATUS] < 500"

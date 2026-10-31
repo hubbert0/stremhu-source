@@ -9,11 +9,14 @@
 #   https://${AIOSTREAMS_HOSTNAME}.${TAILNET}  – AIOStreams (ezt adod hozzá a Stremióhoz)
 #   https://${TMDB_HOSTNAME}.${TAILNET}        – saját TMDB-addon (magyar címek)
 #   https://${LELIBRARY_HOSTNAME}.${TAILNET}   – LeLibrary (TorBox-könyvtár a Stremióban)
+#   https://${FELIRAT_HOSTNAME}.${TAILNET}     – magyar feliratok (feliratok.eu)
 # A StremThru csak a belső Docker-hálózaton látszik.
 #
 # Szerverpult (csak a tailnetről, Funnel nélkül):
 #   https://${PULT_HOSTNAME}.${TAILNET}        – kezelőfelület, széf, Docker-műveletek
 #   https://${PULT_HOSTNAME}.${TAILNET}:8443   – webes terminál a szerveren
+#   https://${PULT_HOSTNAME}.${TAILNET}:8090   – állapotfigyelő (Gatus)
+#   https://${PULT_HOSTNAME}.${TAILNET}:9898   – mentés (Backrest)
 #
 # Beállítás: deploy/README.md
 
@@ -225,6 +228,35 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # ------------------------------------------- Magyar feliratok (feliratok.eu)
+  # Stremio-felirataddon: https://${FELIRAT_HOSTNAME}.${TAILNET}/manifest.json
+  ts-felirat:
+    image: tailscale/tailscale:latest
+    hostname: ${FELIRAT_HOSTNAME:-felirat}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-felirat-state:/var/lib/tailscale
+      - ./tailscale/felirat.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  feliratok:
+    image: ${FELIRAT_IMAGE:-ghcr.io/hubbert0/stremhu-feliratok:latest}
+    build: ./feliratok
+    network_mode: service:ts-felirat
+    depends_on:
+      - ts-felirat
+    environment:
+      - TZ=Europe/Budapest
+      - FELIRAT_BASE_URL=https://${FELIRAT_HOSTNAME:-felirat}.${TAILNET}
+    volumes:
+      - felirat-data:/data
+    mem_limit: 256m
+    restart: unless-stopped
+
   # ---------------------------------------------------------- Szerverpult
   # Csak a tailnetről érhető el (a pult.json-ban nincs Funnel), és a
   # .env-ben lévő PULT_USER / PULT_PASSWORD kell hozzá. Root jogú
@@ -260,6 +292,7 @@ services:
       - AIOSTREAMS_HOSTNAME=${AIOSTREAMS_HOSTNAME}
       - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
       - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
+      - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
       - REPO_DIR=${REPO_DIR:-/root/stremhu-source}
     volumes:
       # A konténerek kezeléséhez és a frissítéshez (git pull + compose).
@@ -305,6 +338,92 @@ services:
       - "cd ${REPO_DIR:-/root/stremhu-source}/deploy 2>/dev/null; exec bash -l"
     restart: unless-stopped
 
+  # ----------------------------------------------- Állapotfigyelő (Gatus)
+  # Csak a tailnetről: https://${PULT_HOSTNAME}.${TAILNET}:8090
+  # Hiba esetén értesítés a telefonra (ntfy app, téma: NTFY_TOPIC a .env-ben).
+  gatus:
+    image: ghcr.io/twin/gatus:stable
+    network_mode: service:ts-pult
+    depends_on:
+      - ts-pult
+    environment:
+      - GATUS_CONFIG_PATH=/config/config.yaml
+      - TAILNET=${TAILNET}
+      - STREMHU_HOSTNAME=${STREMHU_HOSTNAME}
+      - AIOSTREAMS_HOSTNAME=${AIOSTREAMS_HOSTNAME}
+      - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
+      - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
+      - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
+      - NTFY_TOPIC=${NTFY_TOPIC:?Futtasd az install.sh-t}
+    volumes:
+      - ./gatus/config.yaml:/config/config.yaml:ro
+      - gatus-data:/data
+    mem_limit: 128m
+    restart: unless-stopped
+
+  # ------------------------------------------------------ Mentés (Backrest)
+  # Csak a tailnetről: https://${PULT_HOSTNAME}.${TAILNET}:9898
+  # Titkosított, napi mentés egy felhőtárhelyre (beállítás: deploy/README.md).
+  backrest:
+    image: ghcr.io/garethgeorge/backrest:latest
+    network_mode: service:ts-pult
+    depends_on:
+      - ts-pult
+    environment:
+      - TZ=Europe/Budapest
+      - BACKREST_PORT=127.0.0.1:19898
+      - BACKREST_DATA=/data
+      - BACKREST_CONFIG=/config/config.json
+      - XDG_CACHE_HOME=/cache
+      - TMPDIR=/tmp
+    volumes:
+      - backrest-data:/data
+      - backrest-config:/config
+      - backrest-cache:/cache
+      # Ami a mentésbe kerül (mind csak olvasható):
+      - mentes-dump:/userdata/adatbazisok:ro
+      - pult-data:/userdata/szerverpult:ro
+      - lelibrary-data:/userdata/lelibrary:ro
+      - ${REPO_DIR:-/root/stremhu-source}/deploy:/userdata/telepito:ro
+      - ts-stremhu-state:/userdata/tailscale/stremhu:ro
+      - ts-aiostreams-state:/userdata/tailscale/aiostreams:ro
+      - ts-tmdb-state:/userdata/tailscale/tmdb:ro
+      - ts-lelibrary-state:/userdata/tailscale/lelibrary:ro
+      - ts-felirat-state:/userdata/tailscale/felirat:ro
+      - ts-pult-state:/userdata/tailscale/pult:ro
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Hatóránként egységes másolatot készít az adatbázisokról a mentéshez
+  # (futás közben a nyers adatbázisfájl másolata sérült lehetne).
+  mentes-dump:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -o pipefail
+        apk add --no-cache sqlite >/dev/null 2>&1 || echo "Figyelem: az sqlite telepítése nem sikerült"
+        while true; do
+          mkdir -p /dump/stremhu /dump/aiostreams
+          if sqlite3 /src/stremhu/system/database/app.db ".backup '/dump/stremhu/app.db'"; then echo "StremHU-adatbázis mentve"; else echo "HIBA: StremHU-adatbázis"; fi
+          if sqlite3 /src/aiostreams/db.sqlite ".backup '/dump/aiostreams/db.sqlite'"; then echo "AIOStreams-adatbázis mentve"; else echo "HIBA: AIOStreams-adatbázis"; fi
+          if pg_dump -h lelibrary-db -U lelibrary lelibrary | gzip > /dump/lelibrary.sql.gz.tmp; then mv /dump/lelibrary.sql.gz.tmp /dump/lelibrary.sql.gz; echo "LeLibrary-adatbázis mentve"; else echo "HIBA: LeLibrary-adatbázis"; fi
+          date '+%Y-%m-%d %H:%M' > /dump/utolso-mentes.txt
+          sleep 21600
+        done
+    environment:
+      - TZ=Europe/Budapest
+      - PGPASSWORD=${LELIBRARY_DB_PASSWORD:?Futtasd az install.sh-t}
+    volumes:
+      - stremhu-data:/src/stremhu
+      - aiostreams-data:/src/aiostreams
+      - mentes-dump:/dump
+    depends_on:
+      lelibrary-db:
+        condition: service_healthy
+    mem_limit: 256m
+    restart: unless-stopped
+
 volumes:
   ts-stremhu-state:
   ts-aiostreams-state:
@@ -318,3 +437,10 @@ volumes:
   lelibrary-data:
   lelibrary-db:
   lelibrary-redis:
+  ts-felirat-state:
+  felirat-data:
+  gatus-data:
+  backrest-data:
+  backrest-config:
+  backrest-cache:
+  mentes-dump:

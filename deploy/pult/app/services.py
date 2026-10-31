@@ -62,6 +62,26 @@ def default_services(settings: Settings) -> list[Service]:
                 "Szerver",
                 "A TorBoxon lévő filmek és sorozatok a Stremio kezdőlapján",
             ),
+            _service(
+                "Magyar feliratok",
+                f"https://{host['felirat']}.{tn}/",
+                "Szerver",
+                "Felirataddon a feliratok.eu-hoz",
+            ),
+            _service(
+                "Állapotfigyelő",
+                f"https://{host['pult']}.{tn}:8090",
+                "Szerver",
+                "Gatus – mi működik, mi nem; értesítés a telefonra",
+                check=False,
+            ),
+            _service(
+                "Mentés",
+                f"https://{host['pult']}.{tn}:9898",
+                "Szerver",
+                "Backrest – titkosított napi mentés",
+                check=False,
+            ),
         ]
     services += [
         _service("TorBox", "https://torbox.app/dashboard", "Fiókok", check=False),

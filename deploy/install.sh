@@ -62,6 +62,7 @@ ensure_line FANART_API_KEY ""
 ensure_line PULT_HOSTNAME "pult"
 ensure_line PULT_USER "admin"
 ensure_line LELIBRARY_HOSTNAME "lelibrary"
+ensure_line FELIRAT_HOSTNAME "felirat"
 ensure_line REPO_DIR "${DIR}"
 sed -i "s|^REPO_DIR=.*|REPO_DIR=${DIR}|" .env
 
@@ -83,6 +84,10 @@ ensure_secret PULT_PASSWORD 10
 ensure_secret LELIBRARY_CONFIG_SECRET 32
 ensure_secret LELIBRARY_SELFHOST_SECRET 32
 ensure_secret LELIBRARY_DB_PASSWORD 16
+ensure_line NTFY_TOPIC ""
+if grep -q '^NTFY_TOPIC=$' .env; then
+  sed -i "s|^NTFY_TOPIC=.*|NTFY_TOPIC=stremhu-$(gen_secret 10)|" .env
+fi
 
 # Üres kulcs esetén rákérdez (Enter = kihagyás).
 ask_key() {
@@ -105,7 +110,7 @@ docker compose ps
 
 # Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
 sleep 15
-for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-pult; do
+for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-felirat ts-pult; do
   STATUS="$(docker compose exec -T "${TS}" tailscale status 2>/dev/null || true)"
   if printf '%s' "${STATUS}" | grep -q 'Logged out\|NeedsLogin'; then
     echo
@@ -120,6 +125,8 @@ AIO_NOW="$(grep '^AIOSTREAMS_HOSTNAME=' .env | cut -d= -f2)"
 TMDB_NOW="$(grep '^TMDB_HOSTNAME=' .env | cut -d= -f2)"
 PULT_NOW="$(grep '^PULT_HOSTNAME=' .env | cut -d= -f2)"
 LEL_NOW="$(grep '^LELIBRARY_HOSTNAME=' .env | cut -d= -f2)"
+FEL_NOW="$(grep '^FELIRAT_HOSTNAME=' .env | cut -d= -f2)"
+NTFY_NOW="$(grep '^NTFY_TOPIC=' .env | cut -d= -f2)"
 PULT_USER_NOW="$(grep '^PULT_USER=' .env | cut -d= -f2)"
 PULT_PASS_NOW="$(grep '^PULT_PASSWORD=' .env | cut -d= -f2)"
 
@@ -129,9 +136,15 @@ echo "  StremHU:    https://${STREMHU_NOW}.${TAILNET_NOW}"
 echo "  AIOStreams: https://${AIO_NOW}.${TAILNET_NOW}/stremio/configure"
 echo "  TMDB-addon: https://${TMDB_NOW}.${TAILNET_NOW}/configure"
 echo "  LeLibrary:  https://${LEL_NOW}.${TAILNET_NOW}/configure"
+echo "  Feliratok:  https://${FEL_NOW}.${TAILNET_NOW}/manifest.json"
 echo "AIOStreams-jelszó (ha elfelejtenéd):  grep AIOSTREAMS_AUTH ${DIR}/deploy/.env"
 echo
 echo "Szerverpult (csak a tailnetedről):"
 echo "  Kezelőfelület: https://${PULT_NOW}.${TAILNET_NOW}"
 echo "  Terminál:      https://${PULT_NOW}.${TAILNET_NOW}:8443"
 echo "  Belépés:       ${PULT_USER_NOW} / ${PULT_PASS_NOW}"
+echo "  Állapot:       https://${PULT_NOW}.${TAILNET_NOW}:8090"
+echo "  Mentés:        https://${PULT_NOW}.${TAILNET_NOW}:9898"
+echo
+echo "Értesítések a telefonra: telepítsd az ntfy alkalmazást, és iratkozz fel erre a témára:"
+echo "  ${NTFY_NOW}"

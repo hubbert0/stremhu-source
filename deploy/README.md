@@ -8,11 +8,11 @@ Ez a leírás végigvezet a rendszer telepítésén, beállításán és mindenn
 2. [Fogalmak](#2-fogalmak)
 3. [Amire szükséged lesz](#3-amire-szükséged-lesz)
 4. [Telepítés a szerverre](#4-telepítés-a-szerverre)
-5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary](#5-első-beállítás)
+5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary, feliratok](#5-első-beállítás)
 6. [Címek és jelszavak – mi hol van?](#6-címek-és-jelszavak)
 7. [A `.env` fájl](#7-a-env-fájl)
 8. [TorBox-helykezelés](#8-torbox-helykezelés)
-9. [Szerverpult (a szerveren, tailneten)](#9-szerverpult-a-szerveren)
+9. [Szerverpult, állapotfigyelő, mentés (tailneten)](#9-szerverpult-a-szerveren)
 10. [Helyi Szerverpult (Windows)](#10-helyi-szerverpult-windows)
 11. [Frissítés](#11-frissítés)
 12. [Biztonság és adatvédelem](#12-biztonság-és-adatvédelem)
@@ -44,6 +44,9 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `tmdb` + `ts-tmdb` | saját TMDB-addon (magyar címek) | nyilvános HTTPS (Funnel) |
 | `stremthru` | `.torrent` feltöltése a TorBoxra | csak belül |
 | `lelibrary` + `ts-lelibrary` + `lelibrary-db` + `lelibrary-redis` | LeLibrary: a TorBoxon lévő tartalom poszterekkel a Stremio kezdőlapján | nyilvános HTTPS (Funnel) |
+| `feliratok` + `ts-felirat` | magyar feliratok a feliratok.eu-ról (Stremio-felirataddon) | nyilvános HTTPS (Funnel) |
+| `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről |
+| `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
 
 ## 2. Fogalmak
@@ -182,7 +185,7 @@ Opcionális: a `FANART_API_KEY` sorba fanart.tv-kulcsot írva szebb logókat kap
 
 ### 5.4 Stremio
 
-- Maradjon telepítve: **AIOStreams**, a **saját TMDB-addon** és a **LeLibrary** ([5.5](#55-lelibrary--a-torbox-könyvtár-a-kezdőlapon)). A Cinemeta beépített, nem törölhető – nem zavar.
+- Maradjon telepítve: **AIOStreams**, a **saját TMDB-addon**, a **LeLibrary** és a **Magyar feliratok** ([5.5](#55-lelibrary--a-torbox-könyvtár-a-kezdőlapon)). A Cinemeta beépített, nem törölhető – nem zavar.
 - Töröld: a régi, nyilvános TMDB-addont és minden olyan régi addont, amely ugyanazt csinálja (különben duplán jelennek meg a találatok).
 - **Profilok** (Stremio Supporter-csomag): minden profilnak **saját addonlistája** van. Az addonokat profilonként egyszer telepíteni kell – a Master profilban telepített addon a többi profilban nem jelenik meg.
 - Az addonlista a fiókhoz (profilhoz) kötődik, és a Stremio induláskor frissíti. Ha egy eszközön még a régi látszik: zárd be teljesen az appot (Androidon *Kényszerített leállítás*), és nyisd meg újra; ha így sem, jelentkezz ki és be.
@@ -207,6 +210,23 @@ A sorozatoknál a következő rész magától indul, ha a Stremio lejátszó be�
 
 Beállítás módosítása: nyisd meg a szerkesztő linket, és add meg a jelszót – a változás újratelepítés nélkül érvényes, kivéve ha új sort (katalógust) adsz hozzá.
 
+### 5.6 Magyar feliratok (feliratok.eu)
+
+Saját felirataddon: a [feliratok.eu](https://feliratok.eu) (Super Subtitles) magyar feliratait adja a Stremióhoz – a sorozatokhoz részenként (évadcsomagból is kibontva), a filmekhez cím és év alapján. A régi feliratok ékezeteit (ő, ű) javítja, és a lejátszott fájl kiadásához (pl. `WEB-DL`, `1080p`, a kiadócsoport) legjobban illőt teszi előre.
+
+1. Nyisd meg: `https://felirat.<tailnet>` → **Telepítés a Stremióba** (vagy a Stremio *Addons* keresőjébe: `https://felirat.<tailnet>/manifest.json`).
+2. Ezt is **minden profilba** telepítsd.
+3. A Stremio beállításaiban (*Player → Subtitles*) állítsd az alapértelmezett feliratnyelvet **Magyar**ra.
+
+Lejátszás közben a feliratmenüben *Hungarian* néven jelennek meg (a beépített OpenSubtitles magyar feliratai mellett). Ha egy filmhez/részhez nincs, a feliratok.eu-n sincs fent.
+
+Próba a szerveren (élő lekérdezés néhány ismert címre):
+
+```sh
+docker compose exec feliratok python -m app.selftest
+docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: IMDb-azonosító:évad:rész
+```
+
 ## 6. Címek és jelszavak
 
 | Mi | Cím | Belépés | Hol van a jelszó? |
@@ -215,6 +235,9 @@ Beállítás módosítása: nyisd meg a szerkesztő linket, és add meg a jelsz�
 | AIOStreams | `https://aiostreams.<tailnet>/stremio/configure` | `admin` | `.env` → `AIOSTREAMS_AUTH=admin:JELSZÓ` |
 | TMDB-addon | `https://tmdb.<tailnet>/configure` | nincs | – |
 | LeLibrary | `https://lelibrary.<tailnet>/configure` | a beállítás szerkesztő linkje + jelszó | te adtad meg a beállításkor |
+| Magyar feliratok | `https://felirat.<tailnet>` | nincs | – |
+| Állapotfigyelő | `https://pult.<tailnet>:8090` (csak tailnetről) | nincs | – |
+| Mentés (Backrest) | `https://pult.<tailnet>:9898` (csak tailnetről) | a Backrestben létrehozott felhasználó | te adtad meg az első belépéskor |
 | Szerverpult | `https://pult.<tailnet>` (csak tailnetről) | `admin` | `.env` → `PULT_PASSWORD` |
 | Webes terminál | `https://pult.<tailnet>:8443` (csak tailnetről) | mint a Szerverpult | `.env` → `PULT_PASSWORD` |
 | Helyi Szerverpult | a `Szerverpult.exe` nyitja meg | nincs (csak a saját gépedről) | – |
@@ -238,7 +261,8 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `TS_AUTHKEY` | Tailscale auth key (csak az első belépéshez kell) |
 | `STREMHU_HOSTNAME`, `AIOSTREAMS_HOSTNAME`, `TMDB_HOSTNAME`, `PULT_HOSTNAME` | a gépek neve a tailneten (ebből lesz a cím) |
 | `TMDB_API_KEY`, `FANART_API_KEY` | a TMDB-addon kulcsai |
-| `LELIBRARY_HOSTNAME` | a LeLibrary gépneve a tailneten |
+| `LELIBRARY_HOSTNAME`, `FELIRAT_HOSTNAME` | a LeLibrary és a felirataddon gépneve a tailneten |
+| `NTFY_TOPIC` | az állapotfigyelő értesítéseinek témája az ntfy alkalmazásban (generált; titokként kezeld) |
 | `LELIBRARY_CONFIG_SECRET`, `LELIBRARY_SELFHOST_SECRET`, `LELIBRARY_DB_PASSWORD` | a LeLibrary titkai (generált) – **első indítás után ne változtasd meg**, különben a mentett beállítások és az adatbázis elérhetetlenné válnak |
 | `STREMHU_IMAGE` | melyik StremHU-image fusson (alapból ennek a forknak a buildje) |
 | `STREMHU_SESSION_SECRET` | a StremHU belső titka (generált, ne add ki) |
@@ -326,6 +350,40 @@ Böngészős kezelőfelület, amely a szerveren fut: `https://pult.<tailnet>`.
 - 10 perc tétlenség után magától zárol.
 - A mentés a két pult között kölcsönösen visszaállítható (*Mentés visszaállítása…* az új széf létrehozásánál).
 
+### Állapotfigyelő és értesítések (Gatus)
+
+`https://pult.<tailnet>:8090` – egy oldalon látszik, mi működik: StremHU, AIOStreams, TMDB-addon, LeLibrary, a felirataddon, a belső StremThru, valamint a TorBox, az nCore és a feliratok.eu. A saját szolgáltatásokat 2 percenként, a külsőket 5–10 percenként ellenőrzi, kívülről – úgy, ahogy a családtagok Stremiója is látja.
+
+**Értesítés a telefonra:** ha valami 3 egymás utáni ellenőrzésen elbukik, értesítést kapsz, és akkor is, amikor helyreállt.
+
+1. Telepítsd az **ntfy** alkalmazást (Google Play / App Store).
+2. **+** (Subscribe to topic) → írd be a témát: a telepítő a végén kiírja, vagy `grep NTFY_TOPIC ~/stremhu-source/deploy/.env`.
+3. Kész. A téma neve titok: aki ismeri, látja az értesítéseket – ne add ki.
+
+A figyelt címek listája: `deploy/gatus/config.yaml`.
+
+### Mentés (Backrest)
+
+A `mentes-dump` konténer 6 óránként egységes másolatot készít a StremHU, az AIOStreams és a LeLibrary adatbázisáról. A **Backrest** ezeket a pult széfjével, a `.env`-vel és a Tailscale-állapotokkal együtt naponta, **titkosítva** egy felhőtárhelyre menti. Ha a szerver tönkremegy, egy új szerveren minden visszaállítható – újratelepítés és újrabeállítás nélkül.
+
+**Egyszeri beállítás** (kb. 10 perc). Tárhelynek a **Backblaze B2**-t ajánlom (10 GB-ig ingyenes, a mentés ennél jóval kisebb):
+
+1. **Backblaze:** regisztrálj a [backblaze.com](https://www.backblaze.com/sign-up/cloud-storage)-on → *B2 Cloud Storage → Buckets → Create a Bucket*: egyedi név (pl. `stremhu-mentes-` + néhány véletlen betű), **Private**. Utána *Application Keys → Add a New Application Key*: csak ehhez a buckethez, *Read and Write*. Jegyezd fel a **keyID**-t és az **applicationKey**-t (ez utóbbit csak egyszer mutatja).
+2. Nyisd meg: `https://pult.<tailnet>:9898` – első alkalommal hozz létre egy felhasználót és jelszót.
+3. **Add Repo:**
+   - *Repo Name:* `b2`
+   - *Repository URI:* `b2:BUCKET-NEVE:/stremhu`
+   - *Password:* hosszú, véletlen jelszó (a *Generate* gombbal) – **mentsd el a Széfbe: enélkül a mentés nem állítható vissza!**
+   - *Env Vars:* `B2_ACCOUNT_ID=` + keyID, és `B2_ACCOUNT_KEY=` + applicationKey
+4. **Add Plan:**
+   - *Plan Name:* `napi`, *Repository:* `b2`
+   - *Paths:* `/userdata`
+   - *Schedule:* naponta egyszer (pl. hajnali 4-kor)
+   - *Retention:* pl. 7 napi, 4 heti, 6 havi mentés
+5. **Backup Now** – néhány másodperc, utána a *Snapshots* alatt látszik.
+
+Mi kerül a mentésbe (`/userdata`): `adatbazisok` (StremHU, AIOStreams, LeLibrary), `szerverpult` (a pult széfje és szolgáltatáslistája), `lelibrary`, `telepito` (a `.env` és a telepítőcsomag), `tailscale` (a gépek belépési állapota). Visszaállításkor a Backrestben ugyanezt a repót kell felvenni ugyanazzal a jelszóval, majd a *Snapshots* alatt visszaállítani.
+
 ## 10. Helyi Szerverpult (Windows)
 
 Ugyanez a pult Windows-programként, a saját gépeden. **Nem kell hozzá Tailscale**: a szervert SSH-n éri el, ugyanúgy, mint a PowerShell. Pluszban a Contabo VNC-t egy gombbal megnyitja az UltraVNC-ben.
@@ -387,8 +445,9 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 
 - **A repó nyilvános** (nyilvános projekt forkja nem lehet privát), de nincs benne személyes adat: se szervercím, se tailnet-név, se jelszó vagy kulcs.
 - **A titkok helye:** a szerveren a `.env` (csak root olvashatja), a Windows-gépen a `%APPDATA%\Szerverpult`, a széf tartalma titkosítva.
-- **Nyilvános (Funnel) címek:** StremHU, AIOStreams, TMDB-addon, LeLibrary – mindegyik saját belépéssel, jelszóval vagy titkos linkkel védett. A StremThru, a LeLibrary adatbázisa és gyorsítótára kívülről nem látszik.
-- **Csak tailnetről:** a Szerverpult és a webes terminál.
+- **Nyilvános (Funnel) címek:** StremHU, AIOStreams, TMDB-addon, LeLibrary, felirataddon – mindegyik saját belépéssel, jelszóval vagy titkos linkkel védett. A StremThru, a LeLibrary adatbázisa és gyorsítótára kívülről nem látszik.
+- **Csak tailnetről:** a Szerverpult, a webes terminál, az állapotfigyelő és a mentés.
+- **Mentés:** a Backrest restic-kel, a tárhelyre kerülés előtt titkosít; a repó jelszava nélkül a mentés sem olvasható, sem visszaállítható.
 - **Ha egy kulcs vagy jelszó illetéktelen kezébe kerülhetett** (pl. elküldted valakinek): Tailscale auth key → visszavonás a Keys oldalon; TorBox API-kulcs → újragenerálás a TorBoxban, és csere a `.env`-ben és az AIOStreamsben; pult-jelszó → új érték a `.env`-ben, majd `docker compose up -d pult terminal`.
 
 ## 13. Hibaelhárítás
@@ -402,6 +461,9 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | A film nem indul, „próbáld később” | nem gyorsítótárazott torrent: a TorBox még tölti. Ha sokáig áll: TorBox-jelentés – van-e szabad hely? |
 | A StremThru újraindul / memóriahiány | a `compose.yaml`-ben a `STREMTHRU_FEATURE` sor kikapcsolja a nagy szinkronokat; ne töröld |
 | A LeLibrary-sorok üresek | a TorBox-kulcs és a TMDB-kulcs helyes-e (szerkesztő link); új letöltés pár perc után jelenik meg. Napló: `docker compose logs --tail 100 lelibrary` |
+| Nincs magyar felirat | `docker compose exec feliratok python -m app.selftest IMDB-AZONOSÍTÓ` – ha itt sincs, a feliratok.eu-n sincs fent; napló: `docker compose logs --tail 100 feliratok` |
+| Nem jön értesítés | az ntfy appban pontosan az `NTFY_TOPIC` témára iratkoztál-e fel; napló: `docker compose logs --tail 100 gatus` |
+| A mentés hibát jelez | a Backrest *Operations* lapján látszik az ok (pl. lejárt B2-kulcs); az adatbázis-másolatok: `docker compose logs --tail 20 mentes-dump` |
 | A LeLibrary nem indul | `docker compose ps` – a `lelibrary-db` és a `lelibrary-redis` állapota `healthy` legyen; memória: `free -h` |
 | A Szerverpult nem nyílik meg | azon az eszközön fut-e a Tailscale? Szerveroldalon: `docker compose exec ts-pult tailscale serve status` |
 | Helyi pult: *Hibás adat: szerver címe* | a címet `https://` és port nélkül írd be ([10. fejezet](#telepítés-és-első-indítás)) |
@@ -458,6 +520,7 @@ A szerveres pult (`pult`, `terminal`) Linux-szerverre készült; Windowson a Hel
 |---|---|---|
 | `torbox-ghcr.yaml` | `server/`, `client/` változásakor | tesztek, majd `ghcr.io/hubbert0/stremhu-source:torbox` |
 | `pult-ghcr.yaml` | `deploy/pult/` változásakor | tesztek, majd `ghcr.io/hubbert0/stremhu-pult:latest` |
+| `feliratok-ghcr.yaml` | `deploy/feliratok/` változásakor | tesztek, majd `ghcr.io/hubbert0/stremhu-feliratok:latest` |
 | `lelibrary-ghcr.yaml` | `deploy/lelibrary/` változásakor és hetente | a legfrissebb LeLibrary-kiadás a `deploy/lelibrary/patch.py` magyarításával: `ghcr.io/hubbert0/lelibrary-hu:latest` |
 | `helyi-pult.yaml` | `deploy/helyi-pult/` változásakor | tesztek (Linuxon, SSH-teszt-szerverrel), Windows-build, indítási próba, majd a `helyi-pult` kiadásba feltöltés |
 

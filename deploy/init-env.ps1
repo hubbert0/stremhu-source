@@ -37,6 +37,7 @@ $content = $content -replace '(?m)^PULT_PASSWORD=.*$', ('PULT_PASSWORD=' + $pult
 $content = $content -replace '(?m)^LELIBRARY_CONFIG_SECRET=.*$', ('LELIBRARY_CONFIG_SECRET=' + (New-Hex))
 $content = $content -replace '(?m)^LELIBRARY_SELFHOST_SECRET=.*$', ('LELIBRARY_SELFHOST_SECRET=' + (New-Hex))
 $content = $content -replace '(?m)^LELIBRARY_DB_PASSWORD=.*$', ('LELIBRARY_DB_PASSWORD=' + (New-Hex).Substring(0, 20))
+$content = $content -replace '(?m)^NTFY_TOPIC=.*$', ('NTFY_TOPIC=stremhu-' + (New-Hex).Substring(0, 20))
 
 # UTF-8 BOM nélkül, mert a Docker Compose a BOM-ot nem szereti.
 [System.IO.File]::WriteAllText($envPath, $content, $utf8NoBom)
