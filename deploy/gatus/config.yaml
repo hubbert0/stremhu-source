@@ -1,11 +1,12 @@
 # Gatus – állapotfigyelő a StremHU-rendszerhez.
-# Csak a tailnetről érhető el: https://<PULT_HOSTNAME>.<TAILNET>:8090 (belül: 18090)
+# Tailneten: https://<PULT_HOSTNAME>.<TAILNET>:8090 (belül: 18090)
+# SSH-alagúton, Tailscale nélkül: http://localhost:8090 (deploy/README.md, 9. fejezet)
 # Ha valami 3 egymás utáni ellenőrzésen elbukik, értesítést küld a telefonodra
 # (ntfy alkalmazás, a téma neve a .env NTFY_TOPIC sorában), és akkor is, amikor helyreállt.
 # A ${...} értékeket a .env-ből kapja.
 
 web:
-  address: 127.0.0.1
+  address: 0.0.0.0
   port: 18090
 
 storage:

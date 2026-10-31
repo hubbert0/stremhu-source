@@ -146,5 +146,9 @@ echo "  Belépés:       ${PULT_USER_NOW} / ${PULT_PASS_NOW}"
 echo "  Állapot:       https://${PULT_NOW}.${TAILNET_NOW}:8090"
 echo "  Mentés:        https://${PULT_NOW}.${TAILNET_NOW}:9898"
 echo
+echo "Állapot és Mentés Tailscale nélkül (a saját gépeden, PowerShellben):"
+echo "  ssh -N -L 8090:127.0.0.1:18090 -L 9898:127.0.0.1:19898 root@SZERVERED-CÍME"
+echo "  majd a böngészőben: http://localhost:8090 és http://localhost:9898"
+echo
 echo "Értesítések a telefonra: telepítsd az ntfy alkalmazást, és iratkozz fel erre a témára:"
 echo "  ${NTFY_NOW}"

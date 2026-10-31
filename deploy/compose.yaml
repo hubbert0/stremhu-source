@@ -17,6 +17,10 @@
 #   https://${PULT_HOSTNAME}.${TAILNET}:8443   – webes terminál a szerveren
 #   https://${PULT_HOSTNAME}.${TAILNET}:8090   – állapotfigyelő (Gatus)
 #   https://${PULT_HOSTNAME}.${TAILNET}:9898   – mentés (Backrest)
+# Az állapotfigyelő és a mentés Tailscale nélkül, SSH-alagúton is elérhető
+# (a szerver saját gépén, 127.0.0.1-en; kívülről nem látszik):
+#   ssh -N -L 8090:127.0.0.1:18090 -L 9898:127.0.0.1:19898 root@SZERVER
+#   → http://localhost:8090 és http://localhost:9898
 #
 # Beállítás: deploy/README.md
 
@@ -272,6 +276,11 @@ services:
     volumes:
       - ts-pult-state:/var/lib/tailscale
       - ./tailscale:/config:ro
+    # Az állapotfigyelő és a mentés a szerver saját gépén (csak 127.0.0.1),
+    # hogy SSH-alagúton Tailscale nélkül is megnyíljon. Kívülről nem érhető el.
+    ports:
+      - "127.0.0.1:18090:18090"
+      - "127.0.0.1:19898:19898"
     restart: unless-stopped
 
   pult:
@@ -339,7 +348,8 @@ services:
     restart: unless-stopped
 
   # ----------------------------------------------- Állapotfigyelő (Gatus)
-  # Csak a tailnetről: https://${PULT_HOSTNAME}.${TAILNET}:8090
+  # Tailneten: https://${PULT_HOSTNAME}.${TAILNET}:8090
+  # SSH-alagúton: http://localhost:8090 (lásd fent)
   # Hiba esetén értesítés a telefonra (ntfy app, téma: NTFY_TOPIC a .env-ben).
   gatus:
     image: ghcr.io/twin/gatus:stable
@@ -362,7 +372,8 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------------ Mentés (Backrest)
-  # Csak a tailnetről: https://${PULT_HOSTNAME}.${TAILNET}:9898
+  # Tailneten: https://${PULT_HOSTNAME}.${TAILNET}:9898
+  # SSH-alagúton: http://localhost:9898 (lásd fent)
   # Titkosított, napi mentés egy felhőtárhelyre (beállítás: deploy/README.md).
   backrest:
     image: ghcr.io/garethgeorge/backrest:latest
@@ -371,7 +382,7 @@ services:
       - ts-pult
     environment:
       - TZ=Europe/Budapest
-      - BACKREST_PORT=127.0.0.1:19898
+      - BACKREST_PORT=0.0.0.0:19898
       - BACKREST_DATA=/data
       - BACKREST_CONFIG=/config/config.json
       - XDG_CACHE_HOME=/cache

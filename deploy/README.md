@@ -12,7 +12,7 @@ Ez a leírás végigvezet a rendszer telepítésén, beállításán és mindenn
 6. [Címek és jelszavak – mi hol van?](#6-címek-és-jelszavak)
 7. [A `.env` fájl](#7-a-env-fájl)
 8. [TorBox-helykezelés](#8-torbox-helykezelés)
-9. [Szerverpult, állapotfigyelő, mentés (tailneten)](#9-szerverpult-a-szerveren)
+9. [Szerverpult, állapotfigyelő, mentés](#9-szerverpult-a-szerveren)
 10. [Helyi Szerverpult (Windows)](#10-helyi-szerverpult-windows)
 11. [Frissítés](#11-frissítés)
 12. [Biztonság és adatvédelem](#12-biztonság-és-adatvédelem)
@@ -45,8 +45,8 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `stremthru` | `.torrent` feltöltése a TorBoxra | csak belül |
 | `lelibrary` + `ts-lelibrary` + `lelibrary-db` + `lelibrary-redis` | LeLibrary: a TorBoxon lévő tartalom poszterekkel a Stremio kezdőlapján | nyilvános HTTPS (Funnel) |
 | `feliratok` + `ts-felirat` | magyar feliratok a feliratok.eu-ról (Stremio-felirataddon) | nyilvános HTTPS (Funnel) |
-| `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről |
-| `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről |
+| `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről, vagy SSH-alagúton |
+| `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről, vagy SSH-alagúton |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
 
 ## 2. Fogalmak
@@ -236,8 +236,8 @@ docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: 
 | TMDB-addon | `https://tmdb.<tailnet>/configure` | nincs | – |
 | LeLibrary | `https://lelibrary.<tailnet>/configure` | a beállítás szerkesztő linkje + jelszó | te adtad meg a beállításkor |
 | Magyar feliratok | `https://felirat.<tailnet>` | nincs | – |
-| Állapotfigyelő | `https://pult.<tailnet>:8090` (csak tailnetről) | nincs | – |
-| Mentés (Backrest) | `https://pult.<tailnet>:9898` (csak tailnetről) | a Backrestben létrehozott felhasználó | te adtad meg az első belépéskor |
+| Állapotfigyelő | `https://pult.<tailnet>:8090` (tailnetről) vagy `http://localhost:8090` (SSH-alagúton) | nincs | – |
+| Mentés (Backrest) | `https://pult.<tailnet>:9898` (tailnetről) vagy `http://localhost:9898` (SSH-alagúton) | a Backrestben létrehozott felhasználó | te adtad meg az első belépéskor |
 | Szerverpult | `https://pult.<tailnet>` (csak tailnetről) | `admin` | `.env` → `PULT_PASSWORD` |
 | Webes terminál | `https://pult.<tailnet>:8443` (csak tailnetről) | mint a Szerverpult | `.env` → `PULT_PASSWORD` |
 | Helyi Szerverpult | a `Szerverpult.exe` nyitja meg | nincs (csak a saját gépedről) | – |
@@ -350,9 +350,21 @@ Böngészős kezelőfelület, amely a szerveren fut: `https://pult.<tailnet>`.
 - 10 perc tétlenség után magától zárol.
 - A mentés a két pult között kölcsönösen visszaállítható (*Mentés visszaállítása…* az új széf létrehozásánál).
 
+### Állapotfigyelő és mentés Tailscale nélkül (SSH-alagút)
+
+Az állapotfigyelő és a mentés a tailnet mellett **SSH-alagúton** is megnyitható, bármelyik gépről, amelyről be tudsz lépni a szerverre – Tailscale nélkül. A két felület a szerveren csak a szerver saját gépén (`127.0.0.1`) figyel, kívülről nem érhető el; az SSH-kapcsolat „hozza át” a saját gépedre.
+
+1. Windowson nyiss egy PowerShellt, és írd be (a `SZERVERED-CÍME` helyére a szervered címét):
+   ```powershell
+   ssh -N -L 8090:127.0.0.1:18090 -L 9898:127.0.0.1:19898 root@SZERVERED-CÍME
+   ```
+2. Add meg a szerver jelszavát. Utána **látszólag nem történik semmi** – ez így jó: amíg ez az ablak nyitva van, él az alagút.
+3. A böngészőben: **Állapotfigyelő:** `http://localhost:8090`, **Mentés:** `http://localhost:9898`.
+4. Ha végeztél, a PowerShell-ablakban `Ctrl+C`, vagy csak zárd be.
+
 ### Állapotfigyelő és értesítések (Gatus)
 
-`https://pult.<tailnet>:8090` – egy oldalon látszik, mi működik: StremHU, AIOStreams, TMDB-addon, LeLibrary, a felirataddon, a belső StremThru, valamint a TorBox, az nCore és a feliratok.eu. A saját szolgáltatásokat 2 percenként, a külsőket 5–10 percenként ellenőrzi, kívülről – úgy, ahogy a családtagok Stremiója is látja.
+`https://pult.<tailnet>:8090` (vagy SSH-alagúton `http://localhost:8090`) – egy oldalon látszik, mi működik: StremHU, AIOStreams, TMDB-addon, LeLibrary, a felirataddon, a belső StremThru, valamint a TorBox, az nCore és a feliratok.eu. A saját szolgáltatásokat 2 percenként, a külsőket 5–10 percenként ellenőrzi, kívülről – úgy, ahogy a családtagok Stremiója is látja.
 
 **Értesítés a telefonra:** ha valami 3 egymás utáni ellenőrzésen elbukik, értesítést kapsz, és akkor is, amikor helyreállt.
 
@@ -401,7 +413,7 @@ Minden oldalon ellenőrizd, hogy felül a `stremhu-mentes` projekt van kiválasz
    ```
    Az utolsó parancsnak a Drive méretét és szabad helyét kell kiírnia, a *„shared Google Drive client_id”* figyelmeztetés nélkül.
 
-**3. Backrest** – nyisd meg: `https://pult.<tailnet>:9898`, első alkalommal hozz létre egy felhasználót és jelszót.
+**3. Backrest** – nyisd meg: `https://pult.<tailnet>:9898` vagy SSH-alagúton `http://localhost:9898` (lásd fent), első alkalommal hozz létre egy felhasználót és jelszót.
 
 1. **Add Repo:**
    - *Repo Name:* `gdrive`
@@ -481,7 +493,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 - **A repó nyilvános** (nyilvános projekt forkja nem lehet privát), de nincs benne személyes adat: se szervercím, se tailnet-név, se jelszó vagy kulcs.
 - **A titkok helye:** a szerveren a `.env` (csak root olvashatja), a Windows-gépen a `%APPDATA%\Szerverpult`, a széf tartalma titkosítva.
 - **Nyilvános (Funnel) címek:** StremHU, AIOStreams, TMDB-addon, LeLibrary, felirataddon – mindegyik saját belépéssel, jelszóval vagy titkos linkkel védett. A StremThru, a LeLibrary adatbázisa és gyorsítótára kívülről nem látszik.
-- **Csak tailnetről:** a Szerverpult, a webes terminál, az állapotfigyelő és a mentés.
+- **Csak tailnetről:** a Szerverpult és a webes terminál. Az állapotfigyelő és a mentés emellett SSH-alagúton is elérhető (a szerveren csak `127.0.0.1`-en figyelnek, kívülről nem látszanak; a mentéshez a Backrest saját jelszava is kell).
 - **Mentés:** a Backrest restic-kel, a tárhelyre kerülés előtt titkosít; a repó jelszava nélkül a mentés sem olvasható, sem visszaállítható.
 - **Ha egy kulcs vagy jelszó illetéktelen kezébe kerülhetett** (pl. elküldted valakinek): Tailscale auth key → visszavonás a Keys oldalon; TorBox API-kulcs → újragenerálás a TorBoxban, és csere a `.env`-ben és az AIOStreamsben; pult-jelszó → új érték a `.env`-ben, majd `docker compose up -d pult terminal`.
 
