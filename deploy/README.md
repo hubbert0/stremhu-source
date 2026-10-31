@@ -379,7 +379,7 @@ A kérdésekre így válaszolj (ahol nincs megadva, csak Enter):
 
 | Kérdés | Válasz |
 |---|---|
-| `e/n/d/r/c/s/q>` | `n` (új kapcsolat) |
+| `n/s/q>` (vagy `e/n/d/r/c/s/q>`) | `n` (új kapcsolat) |
 | `name>` | `gdrive` |
 | `Storage>` | `drive` |
 | `client_id>`, `client_secret>` | Enter, Enter |
