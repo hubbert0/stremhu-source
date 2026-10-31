@@ -162,6 +162,7 @@ class World:
             "KOLTOZES_CRON_PARKED": str(self.parked),
             "KOLTOZES_IGEN": "1",
             "KOLTOZES_ROOT_ELLENORZES": "0",
+            "KOLTOZES_APT_CONF": str(root / "apt-varakozas.conf"),
             "KOLTOZES_GEPAZONOSITO": "0",
             "KOLTOZES_IDOZONA": "0",
             "KOLTOZES_SSH_KULCSOK": "0",

@@ -115,6 +115,12 @@ say "Az új szerver előkészítése (a régi közben még fut)"
 if [ "${KOLTOZES_IDOZONA:-1}" = "1" ] && command -v timedatectl >/dev/null 2>&1; then
   timedatectl set-timezone Europe/Budapest || true
 fi
+# Frissen telepített szerveren az Ubuntu az első percekben frissíti magát, és
+# addig fogja a csomagkezelőt. Az apt ilyenkor várjon (legfeljebb 30 percet).
+APT_WAIT_CONF="${KOLTOZES_APT_CONF:-/etc/apt/apt.conf.d/99koltozes-varakozas}"
+if [ -d "$(dirname "${APT_WAIT_CONF}")" ]; then
+  echo 'DPkg::Lock::Timeout "1800";' > "${APT_WAIT_CONF}" 2>/dev/null || true
+fi
 if ! command -v git >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   info "git és curl telepítése..."
   apt-get update -q && apt-get install -y -q git curl
@@ -123,6 +129,7 @@ if ! command -v docker >/dev/null 2>&1; then
   info "Docker telepítése (pár perc)..."
   curl -fsSL https://get.docker.com | sh
 fi
+rm -f "${APT_WAIT_CONF}"
 docker compose version >/dev/null 2>&1 || die "a 'docker compose' nem érhető el."
 
 if [ -d "${NEW_REPO}/.git" ]; then
