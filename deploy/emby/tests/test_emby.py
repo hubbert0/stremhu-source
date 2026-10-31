@@ -18,6 +18,8 @@ BASE = "https://emby.pelda.ts.net"
 MOVIES = [
     {
         "Id": "101",
+        "Type": "Movie",
+        "View": "vfilm",
         "Name": "Dűne: Második rész",
         "ProductionYear": 2024,
         "ProviderIds": {"Imdb": "tt15239678", "Tmdb": "693134"},
@@ -27,13 +29,18 @@ MOVIES = [
     },
     {
         "Id": "102",
+        "Type": "Movie",
+        "View": "vfilm",
         "Name": "Csak TMDb",
         "ProductionYear": 2020,
+        "Genres": ["Dráma"],
         "ProviderIds": {"Tmdb": "555"},
         "ImageTags": {},
     },
     {
         "Id": "103",
+        "Type": "Video",
+        "View": "vhazi",
         "Name": "Házi videó",
         "ProviderIds": {},
         "ImageTags": {"Primary": "b"},
@@ -42,12 +49,22 @@ MOVIES = [
 SERIES = [
     {
         "Id": "201",
+        "Type": "Series",
+        "View": "vsor",
         "Name": "Trónok harca",
         "ProductionYear": 2011,
         "ProviderIds": {"IMDB": "0944947"},
         "ImageTags": {"Primary": "c"},
         "BackdropImageTags": ["d"],
     }
+]
+ITEMS = MOVIES + SERIES
+VIEWS = [
+    {"Id": "vfilm", "Name": "Filmek", "CollectionType": "movies"},
+    {"Id": "vsor", "Name": "Sorozatok", "CollectionType": "tvshows"},
+    {"Id": "vhazi", "Name": "Házi videók", "CollectionType": "homevideos"},
+    {"Id": "vzene", "Name": "Zene", "CollectionType": "music"},
+    {"Id": "vures", "Name": "Üres", "CollectionType": "movies"},
 ]
 EPISODES = [
     {
@@ -115,6 +132,7 @@ class FakeEmby:
         self.requests: list[str] = []
         self.down = False
         self.expire_once = False
+        self.item_params: list[dict[str, str]] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -137,9 +155,31 @@ class FakeEmby:
             self.tokens.discard(token)
             return httpx.Response(401)
         params = request.url.params
+        if path == "/Users/u1/Views":
+            return httpx.Response(200, json={"Items": VIEWS})
+        if path == "/Genres":
+            types = (params.get("IncludeItemTypes") or "").split(",")
+            names = sorted(
+                {
+                    genre
+                    for i in ITEMS
+                    if i["Type"] in types and i["View"] == params.get("ParentId")
+                    for genre in i.get("Genres", [])
+                }
+            )
+            return httpx.Response(200, json={"Items": [{"Name": n} for n in names]})
         if path == "/Users/u1/Items":
-            kind = params.get("IncludeItemTypes")
-            items = MOVIES if kind == "Movie" else SERIES
+            self.item_params.append(dict(params))
+            types = (params.get("IncludeItemTypes") or "").split(",")
+            items = [i for i in ITEMS if i["Type"] in types]
+            if params.get("ParentId"):
+                items = [i for i in items if i["View"] == params.get("ParentId")]
+            if params.get("Genres"):
+                items = [i for i in items if params["Genres"] in i.get("Genres", [])]
+            if params.get("SortBy") == "SortName":
+                items = sorted(items, key=lambda i: i["Name"])
+            elif params.get("SortBy", "").startswith("ProductionYear"):
+                items = sorted(items, key=lambda i: -i.get("ProductionYear", 0))
             if params.get("Limit") == "0":
                 return httpx.Response(
                     200, json={"Items": [], "TotalRecordCount": len(items)}
@@ -164,7 +204,7 @@ class FakeEmby:
             return httpx.Response(200, json={"Items": items[start : start + limit]})
         if path.startswith("/Users/u1/Items/"):
             item_id = path.rsplit("/", 1)[-1]
-            for item in MOVIES + SERIES:
+            for item in ITEMS:
                 if item["Id"] == item_id:
                     return httpx.Response(200, json=item)
             return httpx.Response(404)
@@ -263,13 +303,19 @@ def test_manifest_lists_catalogs_per_server(
 ) -> None:
     with make_client(tmp_path, embys) as client:
         manifest = get(client, "/manifest.json")
-    assert [c["name"] for c in manifest["catalogs"]] == [
-        "Saját: Filmek",
-        "Saját: Sorozatok",
-        "Sógor: Filmek",
-        "Sógor: Sorozatok",
+    assert [(c["name"], c["type"]) for c in manifest["catalogs"]] == [
+        ("Saját: Filmek", "movie"),
+        ("Saját: Sorozatok", "series"),
+        ("Saját: Házi videók", "movie"),
+        ("Sógor: Filmek", "movie"),
+        ("Sógor: Sorozatok", "series"),
+        ("Sógor: Házi videók", "movie"),
     ]
-    assert manifest["catalogs"][0]["id"] == "emby1-movie"
+    first = manifest["catalogs"][0]
+    assert first["id"] == "emby1-vfilm-movie"
+    genre = next(e for e in first["extra"] if e["name"] == "genre")
+    assert genre["options"] == ["Rendezés: ABC", "Rendezés: évszám", "Dráma", "Sci-Fi"]
+    assert genre["isRequired"] is False
 
 
 # --------------------------------------------------------------- katalógus
@@ -279,8 +325,10 @@ def test_catalog_uses_imdb_ids_and_proxied_posters(
     tmp_path: Path, embys: dict[int, FakeEmby]
 ) -> None:
     with make_client(tmp_path, embys) as client:
-        metas = get(client, "/catalog/movie/emby1-movie.json")["metas"]
-    assert [m["id"] for m in metas] == ["tt15239678", "tmdb:555", "emby:1:103"]
+        metas = get(client, "/catalog/movie/emby1-vfilm-movie.json")["metas"]
+        home = get(client, "/catalog/movie/emby1-vhazi-movie.json")["metas"]
+    assert [m["id"] for m in metas] == ["tt15239678", "tmdb:555"]
+    assert [m["id"] for m in home] == ["emby:1:103"]
     assert metas[0]["poster"] == f"{BASE}/{SECRET}/kep/1/101.jpg"
     assert metas[0]["releaseInfo"] == "2024"
     assert "poster" not in metas[1]
@@ -299,10 +347,10 @@ def test_catalog_series_with_numeric_imdb(
 def test_catalog_search_and_skip(tmp_path: Path, embys: dict[int, FakeEmby]) -> None:
     with make_client(tmp_path, embys) as client:
         found = get(client, "/catalog/movie/emby1-movie/search=d%C5%B1ne.json")["metas"]
-        page2 = get(client, "/catalog/movie/emby1-movie/skip=2.json")["metas"]
+        page2 = get(client, "/catalog/movie/emby1-vfilm-movie/skip=1.json")["metas"]
         wrong = get(client, "/catalog/series/emby1-movie.json")["metas"]
     assert [m["name"] for m in found] == ["Dűne: Második rész"]
-    assert [m["id"] for m in page2] == ["emby:1:103"]
+    assert [m["id"] for m in page2] == ["tmdb:555"]
     assert wrong == []
 
 
@@ -430,3 +478,69 @@ def test_image_proxy_and_cache(tmp_path: Path, embys: dict[int, FakeEmby]) -> No
     assert len(embys[1].requests) == before
     assert bad.status_code == 404
     assert unknown_server.status_code == 404
+
+
+# ------------------------------------------------------------- könyvtárak
+
+
+def test_genre_filter_and_sorting(tmp_path: Path, embys: dict[int, FakeEmby]) -> None:
+    with make_client(tmp_path, embys) as client:
+        drama = get(client, "/catalog/movie/emby1-vfilm-movie/genre=Dr%C3%A1ma.json")
+        abc = get(
+            client, "/catalog/movie/emby1-vfilm-movie/genre=Rendez%C3%A9s%3A%20ABC.json"
+        )
+        year = get(
+            client,
+            "/catalog/movie/emby1-vfilm-movie/genre=Rendez%C3%A9s%3A%20%C3%A9vsz%C3%A1m.json",
+        )
+    assert [m["name"] for m in drama["metas"]] == ["Csak TMDb"]
+    assert [m["name"] for m in abc["metas"]] == ["Csak TMDb", "Dűne: Második rész"]
+    assert [m["releaseInfo"] for m in year["metas"]] == ["2024", "2020"]
+    sent = [p for p in embys[1].item_params if p.get("ParentId") == "vfilm"]
+    assert {"Genres": "Dráma"}.items() <= sent[0].items()
+    assert sent[1]["SortBy"] == "SortName"
+    assert sent[2]["SortBy"] == "ProductionYear,SortName"
+
+
+def test_series_library_catalog(tmp_path: Path, embys: dict[int, FakeEmby]) -> None:
+    with make_client(tmp_path, embys) as client:
+        metas = get(client, "/catalog/series/emby2-vsor-series.json")["metas"]
+        wrong_type = get(client, "/catalog/movie/emby2-vsor-series.json")["metas"]
+    assert [m["id"] for m in metas] == ["tt0944947"]
+    assert wrong_type == []
+
+
+def test_manifest_keeps_last_libraries_when_server_down(
+    tmp_path: Path, embys: dict[int, FakeEmby]
+) -> None:
+    with make_client(tmp_path, embys) as client:
+        get(client, "/manifest.json")
+        service = client.app.state.service  # type: ignore[attr-defined]
+        service.cache.delete("library:2")
+        embys[2].down = True
+        names = [c["name"] for c in get(client, "/manifest.json")["catalogs"]]
+    assert "Sógor: Házi videók" in names
+
+
+def test_manifest_falls_back_when_never_reached(
+    tmp_path: Path, embys: dict[int, FakeEmby]
+) -> None:
+    embys[2].down = True
+    with make_client(tmp_path, embys) as client:
+        catalogs = get(client, "/manifest.json")["catalogs"]
+        legacy = get(client, "/catalog/series/emby1-series.json")["metas"]
+    sogor = [(c["id"], c["name"]) for c in catalogs if c["id"].startswith("emby2")]
+    assert sogor == [
+        ("emby2-movie", "Sógor: Filmek"),
+        ("emby2-series", "Sógor: Sorozatok"),
+    ]
+    assert [m["id"] for m in legacy] == ["tt0944947"]
+
+
+def test_library_list_is_cached(tmp_path: Path, embys: dict[int, FakeEmby]) -> None:
+    with make_client(tmp_path, embys) as client:
+        get(client, "/manifest.json")
+        before = embys[1].requests.count("/Users/u1/Views")
+        get(client, "/manifest.json")
+    assert before == 1
+    assert embys[1].requests.count("/Users/u1/Views") == 1

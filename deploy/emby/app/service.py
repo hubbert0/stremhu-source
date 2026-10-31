@@ -13,12 +13,36 @@ from app.emby import EmbyClient, EmbyError, imdb_id, tmdb_id
 logger = logging.getLogger("emby")
 
 EMBY_TYPES = {"movie": "Movie", "series": "Series"}
+# A könyvtárakban a filmek mellett a házi videók (Video) is filmként jelennek meg.
+LIBRARY_TYPES = {"movie": "Movie,Video", "series": "Series"}
+# Ezek a könyvtártípusok nem filmek/sorozatok, kimaradnak.
+SKIPPED_LIBRARIES = {
+    "music",
+    "musicvideos",
+    "books",
+    "audiobooks",
+    "photos",
+    "playlists",
+    "livetv",
+    "boxsets",
+    "games",
+    "channels",
+    "trailers",
+}
 CATALOG_RE = re.compile(r"^emby([1-9])-(movie|series)$")
+LIBRARY_RE = re.compile(r"^emby([1-9])-([A-Za-z0-9]{1,64})-(movie|series)$")
+# A Stremio „Összes” nézetében egyetlen legördülő lista van: a műfajok elé
+# a rendezési módok kerülnek.
+SORT_OPTIONS = {"Rendezés: ABC": "abc", "Rendezés: évszám": "year"}
+MAX_GENRES = 60
 EMBY_ID_RE = re.compile(r"^emby:([1-9]):([A-Za-z0-9]{1,64})$")
 EXTERNAL_ID_RE = re.compile(r"^(tt\d{1,10}|tmdb:\d{1,10})(?::(\d{1,4}):(\d{1,5}))?$")
 ITEM_ID_RE = re.compile(r"^[A-Za-z0-9]{1,64}$")
 
 CATALOG_TTL = 300
+LIBRARY_TTL = 3600
+LIBRARY_RETRY_TTL = 300
+LIBRARY_KEEP_TTL = 30 * 24 * 3600
 LOOKUP_TTL = 3600
 MISS_TTL = 600
 EPISODES_TTL = 600
@@ -86,27 +110,46 @@ class EmbyService:
 
     # ------------------------------------------------------------- manifest
 
-    def manifest(self) -> dict[str, Any]:
+    async def manifest(self) -> dict[str, Any]:
+        clients = sorted(self.clients.items())
+        libraries = await asyncio.gather(*(self.library(c) for _, c in clients))
         catalogs: list[dict[str, Any]] = []
-        for index, client in sorted(self.clients.items()):
-            for kind, label in (("movie", "Filmek"), ("series", "Sorozatok")):
+        for (index, client), entries in zip(clients, libraries, strict=True):
+            if not entries:
+                # Még soha nem sikerült beolvasni a könyvtárait: egy-egy összesítő sor.
+                entries = [
+                    {
+                        "id": f"emby{index}-{kind}",
+                        "type": kind,
+                        "name": f"{client.server.name}: {label}",
+                        "genres": [],
+                    }
+                    for kind, label in (("movie", "Filmek"), ("series", "Sorozatok"))
+                ]
+            for entry in entries:
                 catalogs.append(
                     {
-                        "type": kind,
-                        "id": f"emby{index}-{kind}",
-                        "name": f"{client.server.name}: {label}",
+                        "type": entry["type"],
+                        "id": entry["id"],
+                        "name": entry["name"],
                         "extra": [
+                            {
+                                "name": "genre",
+                                "isRequired": False,
+                                "options": list(SORT_OPTIONS) + list(entry["genres"]),
+                            },
                             {"name": "search", "isRequired": False},
                             {"name": "skip", "isRequired": False},
                         ],
+                        "extraSupported": ["genre", "search", "skip"],
                     }
                 )
-        names = ", ".join(client.server.name for client in self.clients.values())
+        names = ", ".join(client.server.name for _, client in clients)
         return {
             "id": "hu.stremhu.emby",
             "version": VERSION,
             "name": "Emby-könyvtár",
-            "description": "A saját Emby-szerverek filmjei és sorozatai a kezdőlapon, "
+            "description": "A saját Emby-szerverek könyvtárai a kezdőlapon, "
             "lejátszás közvetlenül az Embyről."
             + (f" Szerverek: {names}." if names else ""),
             "resources": [
@@ -122,6 +165,59 @@ class EmbyService:
             "catalogs": catalogs,
             "behaviorHints": {"configurable": False, "configurationRequired": False},
         }
+
+    async def library(self, client: EmbyClient) -> list[dict[str, Any]]:
+        """A szerver könyvtárai katalógusként (óránként frissül).
+
+        Ha a szerver épp nem érhető el, az utoljára ismert könyvtárlistát adja,
+        hogy a Stremio kezdőlapjáról ne tűnjenek el a sorok.
+        """
+        index = client.server.index
+        cached = self.cache.get_json(f"library:{index}")
+        if cached is not None:
+            return list(cached)
+        try:
+            entries = await self._load_library(client)
+        except EmbyError as error:
+            logger.warning(
+                "%s: a könyvtárak nem tölthetők be: %s", client.server.name, error
+            )
+            last = self.cache.get_json(f"library-last:{index}")
+            entries = list(last) if last is not None else []
+            self.cache.set_json(f"library:{index}", entries, LIBRARY_RETRY_TTL)
+            return entries
+        self.cache.set_json(f"library:{index}", entries, LIBRARY_TTL)
+        self.cache.set_json(f"library-last:{index}", entries, LIBRARY_KEEP_TTL)
+        return entries
+
+    async def _load_library(self, client: EmbyClient) -> list[dict[str, Any]]:
+        server = client.server
+        entries: list[dict[str, Any]] = []
+        for view in await client.views():
+            view_id = str(view.get("Id") or "")
+            collection = str(view.get("CollectionType") or "").lower()
+            if not ITEM_ID_RE.match(view_id) or collection in SKIPPED_LIBRARIES:
+                continue
+            if collection == "movies":
+                kinds = ["movie"]
+            elif collection == "tvshows":
+                kinds = ["series"]
+            else:  # vegyes mappa, házi videók
+                kinds = ["movie", "series"]
+            for kind in kinds:
+                item_type = LIBRARY_TYPES[kind]
+                if await client.count(item_type, view_id) == 0:
+                    continue
+                genres = await client.genres(view_id, item_type)
+                entries.append(
+                    {
+                        "id": f"emby{server.index}-{view_id}-{kind}",
+                        "type": kind,
+                        "name": f"{server.name}: {view.get('Name') or '?'}",
+                        "genres": genres[:MAX_GENRES],
+                    }
+                )
+        return entries
 
     # ------------------------------------------------------------- segédek
 
@@ -170,25 +266,44 @@ class EmbyService:
     async def catalog(
         self, kind: str, catalog_id: str, extra: dict[str, str]
     ) -> list[dict[str, Any]]:
-        match = CATALOG_RE.match(catalog_id)
-        if not match or match.group(2) != kind:
+        library = LIBRARY_RE.match(catalog_id)
+        legacy = CATALOG_RE.match(catalog_id)
+        if library:
+            index, parent_id, catalog_kind = (
+                int(library.group(1)),
+                library.group(2),
+                library.group(3),
+            )
+            item_type = LIBRARY_TYPES[catalog_kind]
+        elif legacy:
+            index, parent_id, catalog_kind = int(legacy.group(1)), None, legacy.group(2)
+            item_type = EMBY_TYPES[catalog_kind]
+        else:
             return []
-        index = int(match.group(1))
         client = self.clients.get(index)
-        if client is None:
+        if client is None or catalog_kind != kind:
             return []
         try:
             skip = max(0, int(extra.get("skip", "0")))
         except ValueError:
             skip = 0
         search = (extra.get("search") or "").strip()[:100] or None
-        key = f"catalog:{index}:{kind}:{skip}:{search or ''}"
+        choice = (extra.get("genre") or "").strip()[:100]
+        sort = SORT_OPTIONS.get(choice, "new")
+        genre = None if not choice or choice in SORT_OPTIONS else choice
+        key = f"catalog:{catalog_id}:{skip}:{search or ''}:{genre or ''}:{sort}"
         cached = self.cache.get_json(key)
         if cached is not None:
             return list(cached)
         try:
             items = await client.items(
-                EMBY_TYPES[kind], skip, self.settings.page_size, search
+                item_type,
+                skip,
+                self.settings.page_size,
+                search=search,
+                parent_id=parent_id,
+                genre=genre,
+                sort=sort,
             )
         except EmbyError as error:
             logger.warning(

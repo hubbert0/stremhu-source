@@ -233,7 +233,8 @@ docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: 
 
 Saját bővítmény, amely egy vagy több (legfeljebb 3) **otthoni Emby-szerver** tartalmát hozza a Stremióba:
 
-- **Kezdőlapi sorok szerverenként** – pl. *„Saját: Filmek”*, *„Saját: Sorozatok”* – plakátokkal, a legutóbb hozzáadottal kezdve, kereséssel.
+- **Egy kezdőlapi sor minden Emby-könyvtárnak**, ahogy az Embyben vannak a mappák (pl. *„Saját: Filmek”*, *„Saját: Mesék”*, *„Saját: Sorozatok”*), plakátokkal, a legutóbb hozzáadottal kezdve. A zene, a fotók és a gyűjtemények kimaradnak, az üres könyvtárak nem jelennek meg.
+- Egy sor **„Összes”** nézetében a legördülő listából **műfaj** szerint szűrhetsz, vagy **ABC / évszám szerinti** sorrendet választhatsz. Keresés is van.
 - Rákattintva a **megszokott magyar adatlap** nyílik (a saját TMDB-addonból), a sorozatoknál évadokkal és részekkel. Ami az Embyben nem kapott IMDb/TMDb-azonosítót, annak az adatlapját az Emby adja.
 - **Lejátszás közvetlenül az Embyről**, átkódolás nélkül, a TorBox-találatok mellett ugyanabban a listában (*„Emby · Saját – 1080p”*); az Embyben lévő külön feliratfájlok is megjelennek.
 - A plakátokat a mi szerverünk tölti le és tárolja egy hétig, így az otthoni gépek feltöltését a filmek kapják.
@@ -271,6 +272,8 @@ Saját bővítmény, amely egy vagy több (legfeljebb 3) **otthoni Emby-szerver*
 5. **Az AIOStreamsbe:** az AIOStreams beállítóoldalán add hozzá a linket egyéni (custom) bővítményként, és kapcsold be a katalógusait. Így minden profil megkapja, a családnál semmit nem kell telepíteni. (Vagy profilonként közvetlenül a Stremióba: a linket illeszd be az *Addons* keresőjébe.)
 
 A `.env` módosítása után: `cd ~/stremhu-source/deploy && docker compose up -d emby`.
+
+Az Emby-könyvtárlistát óránként frissíti (új mappa legfeljebb egy óra múlva jelenik meg). Ha az Embyben **új könyvtár** keletkezik, a Stremióban a bővítményt egyszer **újra kell telepíteni** (Addons → Emby-könyvtár → *Uninstall*, majd a linkkel újra *Install*), mert a Stremio a sorok listáját telepítéskor jegyzi meg. Ha egy Emby épp nem érhető el, a sorai megmaradnak (az utoljára ismert lista szerint), csak üresek.
 
 ## 6. Címek és jelszavak
 

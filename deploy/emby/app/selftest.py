@@ -8,7 +8,8 @@ import asyncio
 import sys
 
 from app.config import load_settings
-from app.emby import EmbyClient, EmbyError, imdb_id
+from app.emby import EmbyClient, EmbyError
+from app.service import LIBRARY_TYPES, SKIPPED_LIBRARIES
 
 
 async def check() -> int:
@@ -32,10 +33,17 @@ async def check() -> int:
             print(
                 f"  Belépés rendben ({server.username}). Filmek: {movies}, sorozatok: {series}"
             )
-            latest = await client.items("Movie", 0, 3)
-            for item in latest:
+            print("  Könyvtárak (ezek lesznek a sorok a Stremio kezdőlapján):")
+            for view in await client.views():
+                view_id = str(view.get("Id") or "")
+                kind = str(view.get("CollectionType") or "vegyes")
+                if kind.lower() in SKIPPED_LIBRARIES:
+                    print(f"    – {view.get('Name')} ({kind}): kimarad")
+                    continue
+                films = await client.count(LIBRARY_TYPES["movie"], view_id)
+                shows = await client.count(LIBRARY_TYPES["series"], view_id)
                 print(
-                    f"  Legutóbb hozzáadott film: {item.get('Name')} – IMDb: {imdb_id(item) or 'nincs'}"
+                    f"    – {view.get('Name')} ({kind}): {films} film, {shows} sorozat"
                 )
         except EmbyError as error:
             failures += 1

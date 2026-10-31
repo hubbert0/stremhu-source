@@ -100,11 +100,9 @@ def create_app(
         return LANDING
 
     @app.get("/{secret}/manifest.json")
-    def get_manifest(request: Request, secret: str) -> JSONResponse:
-        return JSONResponse(
-            service(request, secret).manifest(),
-            headers={"Cache-Control": "max-age=600"},
-        )
+    async def get_manifest(request: Request, secret: str) -> JSONResponse:
+        manifest = await service(request, secret).manifest()
+        return JSONResponse(manifest, headers={"Cache-Control": "max-age=600"})
 
     async def catalog(
         request: Request, secret: str, kind: str, catalog_id: str, extra: str | None

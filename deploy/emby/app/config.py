@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 MAX_SERVERS = 9
 MIN_SECRET_LENGTH = 16
 

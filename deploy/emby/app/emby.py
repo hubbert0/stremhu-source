@@ -155,8 +155,16 @@ class EmbyClient:
     # ------------------------------------------------------------ lekérdezések
 
     async def items(
-        self, item_type: str, start: int, limit: int, search: str | None = None
+        self,
+        item_type: str,
+        start: int,
+        limit: int,
+        search: str | None = None,
+        parent_id: str | None = None,
+        genre: str | None = None,
+        sort: str = "new",
     ) -> list[dict[str, Any]]:
+        """Filmek/sorozatok listája. sort: new (legújabb), abc, year (évszám)."""
         params: dict[str, Any] = {
             "IncludeItemTypes": item_type,
             "Recursive": "true",
@@ -166,21 +174,58 @@ class EmbyClient:
             "EnableImageTypes": "Primary",
             "ImageTypeLimit": 1,
         }
+        if parent_id:
+            params["ParentId"] = parent_id
+        if genre:
+            params["Genres"] = genre
         if search:
             params.update(SearchTerm=search, SortBy="SortName", SortOrder="Ascending")
+        elif sort == "abc":
+            params.update(SortBy="SortName", SortOrder="Ascending")
+        elif sort == "year":
+            params.update(SortBy="ProductionYear,SortName", SortOrder="Descending")
         else:
             params.update(SortBy="DateCreated,SortName", SortOrder="Descending")
         await self.login()
         data = await self.get_json(f"/Users/{self.user_id}/Items", params)
         return list(data.get("Items") or [])
 
-    async def count(self, item_type: str) -> int:
+    async def count(self, item_type: str, parent_id: str | None = None) -> int:
+        params: dict[str, Any] = {
+            "IncludeItemTypes": item_type,
+            "Recursive": "true",
+            "Limit": 0,
+        }
+        if parent_id:
+            params["ParentId"] = parent_id
+        await self.login()
+        data = await self.get_json(f"/Users/{self.user_id}/Items", params)
+        return int(data.get("TotalRecordCount") or 0)
+
+    async def views(self) -> list[dict[str, Any]]:
+        """A felhasználó által látott könyvtárak (az Emby kezdőlapjának mappái)."""
+        await self.login()
+        data = await self.get_json(f"/Users/{self.user_id}/Views")
+        return list(data.get("Items") or [])
+
+    async def genres(self, parent_id: str, item_type: str) -> list[str]:
         await self.login()
         data = await self.get_json(
-            f"/Users/{self.user_id}/Items",
-            {"IncludeItemTypes": item_type, "Recursive": "true", "Limit": 0},
+            "/Genres",
+            {
+                "UserId": self.user_id,
+                "ParentId": parent_id,
+                "IncludeItemTypes": item_type,
+                "Recursive": "true",
+                "SortBy": "SortName",
+                "SortOrder": "Ascending",
+            },
         )
-        return int(data.get("TotalRecordCount") or 0)
+        return [
+            str(item["Name"])
+            for item in data.get("Items") or []
+            if isinstance(item, dict) and item.get("Name")
+        ]
 
     async def find(
         self, item_type: str, provider: str, value: str
