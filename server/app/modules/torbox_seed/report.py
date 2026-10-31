@@ -21,17 +21,28 @@ REASON_LABELS = {
     REASON_COOLDOWN: "pihentetés",
 }
 
-STATE_LABELS = {
-    "uploading": "seedel",
-    "seeding": "seedel",
-    "downloading": "tölt",
-    "stalled": "elakadt",
-    "metaDL": "tölt",
-    "checkingResumeData": "ellenőriz",
-    "paused": "szünetel",
-    "cached": "kész",
-    "completed": "kész",
-}
+# Előtag → magyar felirat (a TorBox állapotszövegei nem mindig egyszavasak).
+_STATE_PREFIX_LABELS = (
+    ("uploading", "seedel"),
+    ("seeding", "seedel"),
+    ("downloading", "tölt"),
+    ("metadl", "tölt"),
+    ("stalled", "elakadt"),
+    ("checking", "ellenőriz"),
+    ("paused", "szünetel"),
+    ("stopped", "seed vége"),
+    ("expired", "lejárt"),
+    ("cached", "kész"),
+    ("completed", "kész"),
+)
+
+
+def state_label(raw: str) -> str:
+    normalized = raw.strip().lower()
+    for prefix, label in _STATE_PREFIX_LABELS:
+        if normalized.startswith(prefix):
+            return label
+    return raw
 
 
 def build_status(
@@ -101,7 +112,16 @@ def _cut(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
-def format_status(status: dict[str, Any] | None, now: datetime.datetime) -> str:
+def _is_relevant(row: dict[str, Any]) -> bool:
+    """Ami helyet foglal, amivel most történt valami, vagy amit mi kezelünk."""
+    return bool(row.get("occupies") or row.get("action") or row.get("entry_reason"))
+
+
+def format_status(
+    status: dict[str, Any] | None,
+    now: datetime.datetime,
+    show_all: bool = False,
+) -> str:
     if not status:
         return (
             "Még nincs állapotjelentés. A TorBox-helykezelés pár percen belül "
@@ -109,29 +129,43 @@ def format_status(status: dict[str, Any] | None, now: datetime.datetime) -> str:
         )
 
     updated_at = parse_datetime(status.get("updated_at"))
-    slot_limit = status.get("slot_limit", 0)
-    free_after = status.get("free_after", 0)
+    rows: list[dict[str, Any]] = status.get("rows", [])
+    shown = rows if show_all else [row for row in rows if _is_relevant(row)]
+    hidden = len(rows) - len(shown)
+
     lines = [
         f"TorBox – utolsó ellenőrzés: {_ago(updated_at, now)}"
         + (" (PRÓBAÜZEM)" if status.get("dry_run") else ""),
-        f"Szabad hely: {free_after}/{slot_limit} "
+        f"Szabad hely: {status.get('free_after', 0)}/{status.get('slot_limit', 0)} "
         f"(cél: legalább {status.get('min_free_slots')}, "
         f"ideiglenes szünet max. {status.get('max_pause_hours'):g} óra)",
         "",
-        f"{'Állapot':<10} {'Hit-n-Run':<12} {'Tracker':<16} {'Név':<44} Művelet / megjegyzés",
     ]
 
-    for row in status.get("rows", []):
-        note = row.get("action") or ""
-        if not note and row.get("entry_reason"):
-            label = REASON_LABELS.get(row["entry_reason"], row["entry_reason"])
-            note = f"{label} ({_ago(parse_datetime(row.get('entry_at')), now)})"
-        raw_state = str(row.get("state") or "")
-        state = STATE_LABELS.get(raw_state, raw_state)
+    if shown:
         lines.append(
-            f"{_cut(state, 10):<10} {_cut(row.get('hnr', ''), 12):<12} "
-            f"{_cut(row.get('tracker') or '-', 16):<16} "
-            f"{_cut(row.get('name', ''), 44):<44} {note}"
+            f"{'Állapot':<10} {'Hit-n-Run':<12} {'Tracker':<16} {'Név':<44} "
+            "Művelet / megjegyzés"
+        )
+        for row in shown:
+            note = row.get("action") or ""
+            if not note and row.get("entry_reason"):
+                label = REASON_LABELS.get(row["entry_reason"], row["entry_reason"])
+                note = f"{label} ({_ago(parse_datetime(row.get('entry_at')), now)})"
+            lines.append(
+                f"{_cut(state_label(str(row.get('state') or '')), 10):<10} "
+                f"{_cut(str(row.get('hnr') or ''), 12):<12} "
+                f"{_cut(row.get('tracker') or '-', 16):<16} "
+                f"{_cut(str(row.get('name') or ''), 44):<44} {note}"
+            )
+    else:
+        lines.append("Jelenleg egyik torrent sem foglal helyet.")
+
+    if hidden:
+        lines.append("")
+        lines.append(
+            f"További {hidden} torrent nem foglal helyet (kész / lejárt / seed vége). "
+            "Mind: a parancs végére írd: --all"
         )
 
     for warning in status.get("warnings", []):

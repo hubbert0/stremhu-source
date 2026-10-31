@@ -18,10 +18,17 @@ import datetime
 from dataclasses import dataclass, field
 from typing import Any
 
-PAUSED_STATE = "paused"
-SEEDING_STATES = frozenset({"uploading", "seeding"})
-DOWNLOADING_STATES = frozenset(
-    {"downloading", "metaDL", "checkingResumeData", "stalled"}
+# A TorBox állapotszövegei nem mindig egyszavasak (pl. „uploading (no peers)”,
+# „stopped seeding”), ezért előtag alapján, kisbetűsen vizsgáljuk őket.
+PAUSED_PREFIXES = ("paused",)
+INACTIVE_PREFIXES = ("paused", "stopped", "expired")
+ACTIVE_PREFIXES = (
+    "uploading",
+    "seeding",
+    "downloading",
+    "metadl",
+    "checking",
+    "stalled",
 )
 
 REASON_FULFILLED = "fulfilled"  # Hit'n'Run teljesítve
@@ -117,18 +124,19 @@ def parse_torbox_torrent(item: dict[str, Any]) -> TorboxTorrent:
     )
 
 
+def normalized_state(torrent: TorboxTorrent) -> str:
+    return torrent.download_state.strip().lower()
+
+
 def is_paused(torrent: TorboxTorrent) -> bool:
-    return torrent.download_state == PAUSED_STATE
+    return normalized_state(torrent).startswith(PAUSED_PREFIXES)
 
 
 def occupies_slot(torrent: TorboxTorrent) -> bool:
-    if is_paused(torrent):
+    state = normalized_state(torrent)
+    if state.startswith(INACTIVE_PREFIXES):
         return False
-    return (
-        torrent.active
-        or torrent.download_state in SEEDING_STATES
-        or torrent.download_state in DOWNLOADING_STATES
-    )
+    return torrent.active or state.startswith(ACTIVE_PREFIXES)
 
 
 def hnr_status(
@@ -163,7 +171,11 @@ def prune_state(
     max_pause: datetime.timedelta,
 ) -> dict[int, StateEntry]:
     """Kidobja az elavult bejegyzéseket: eltűnt torrent, lejárt pihentetés,
-    vagy amit valaki közben kézzel visszakapcsolt."""
+    vagy amit valaki közben kézzel visszakapcsolt (újra helyet foglal).
+
+    A szüneteltetett torrentet nem a pontos „paused” állapotszöveg alapján
+    követjük, hanem az alapján, hogy nem foglal helyet – így akkor sem
+    veszítjük el a nyomát, ha a TorBox másképp jelzi (pl. „stopped seeding”)."""
     by_id = {torrent.id: torrent for torrent in torrents}
     pruned: dict[int, StateEntry] = {}
 
@@ -175,7 +187,7 @@ def prune_state(
             if now - entry.at < max_pause:
                 pruned[torrent_id] = entry
             continue
-        if is_paused(torrent):
+        if not occupies_slot(torrent):
             pruned[torrent_id] = entry
 
     return pruned
@@ -224,7 +236,7 @@ def plan_actions(
         entry = status.entry
         if entry is None or entry.reason != REASON_SLOT:
             continue
-        if not is_paused(status.torrent):
+        if status.occupies_slot:
             continue
         if status.hnr == HNR_DONE:
             plan.reclassify[status.torrent.id] = REASON_FULFILLED

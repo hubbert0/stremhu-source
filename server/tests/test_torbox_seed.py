@@ -19,12 +19,13 @@ from app.modules.torbox_seed.logic import (
     StateEntry,
     TorboxTorrent,
     TrackerTorrentRef,
+    occupies_slot,
     parse_datetime,
     parse_torbox_torrent,
     plan_actions,
     prune_state,
 )
-from app.modules.torbox_seed.report import build_status, format_status
+from app.modules.torbox_seed.report import build_status, format_status, state_label
 from app.modules.torbox_seed.storage import load_state, save_state
 
 NOW = datetime.datetime(2026, 11, 1, 12, 0, tzinfo=datetime.timezone.utc)
@@ -252,6 +253,57 @@ def test_state_roundtrip(tmp_path):
     save_state(path, state)
     assert load_state(path) == state
     assert load_state(tmp_path / "nincs.json") == {}
+
+
+@pytest.mark.parametrize(
+    "state,active,expected",
+    [
+        ("uploading (no peers)", False, True),
+        ("Uploading", False, True),
+        ("downloading", False, True),
+        ("stopped seeding", True, False),
+        ("expired", True, False),
+        ("paused", True, False),
+        ("cached", False, False),
+        ("completed", True, True),  # ismeretlen jelentés: az active jelző dönt
+    ],
+)
+def test_torbox_state_variants(state, active, expected):
+    assert occupies_slot(torrent(1, state=state, active=active)) is expected
+
+
+def test_prune_keeps_slot_entry_when_torbox_reports_stopped():
+    torrents = [torrent(1, state="stopped seeding", active=False)]
+    state = {1: StateEntry(REASON_SLOT, NOW)}
+    assert prune_state(state, torrents, NOW, SETTINGS.max_pause) == state
+
+
+def test_slot_paused_reported_as_stopped_is_still_resumed():
+    torrents = [torrent(1, state="stopped seeding", active=False)]
+    state = {1: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=7))}
+    p = plan(torrents, refs=ncore_refs(1), pending=[1], state=state)
+    assert [(t.id, why) for t, why in p.resume] == [(1, "időkorlát")]
+
+
+def test_state_labels():
+    assert state_label("uploading (no peers)") == "seedel"
+    assert state_label("stopped seeding") == "seed vége"
+    assert state_label("expired") == "lejárt"
+    assert state_label("valami új") == "valami új"
+
+
+def test_report_hides_rows_not_occupying_slots():
+    torrents = [torrent(1), torrent(2, state="expired", active=False)]
+    p = plan(torrents, refs=ncore_refs(1, 2), pending=[1, 2])
+    status = build_status(p, {}, SETTINGS, NOW, dry_run=False, warnings=[])
+
+    short = format_status(status, NOW)
+    assert "film-1" in short
+    assert "film-2" not in short
+    assert "További 1 torrent" in short
+
+    full = format_status(status, NOW, show_all=True)
+    assert "film-2" in full
 
 
 def test_status_report_renders():
