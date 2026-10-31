@@ -133,6 +133,10 @@ services:
       - STREMTHRU_STORE_CONTENT_PROXY=*:false
       # Ne ossza meg a torrent-adatokat a nyilvános StremThru példánnyal.
       - STREMTHRU_PEER_URI=-
+      # Csak a TorBox-feltöltéshez szükséges részek fussanak. A nagy
+      # adatbázis-szinkronok (IMDb, DMM-hashlisták) itt feleslegesek, és
+      # memóriahiányhoz vezettek.
+      - STREMTHRU_FEATURE=-dmm_hashlist,-imdb_title,-probe_media_info,-newz,-sync,-meta,-stremio_list,-stremio_newz,-stremio_sidekick,-stremio_store,-stremio_torz,-stremio_wrap
     volumes:
       - stremthru-data:/app/data
     restart: unless-stopped
