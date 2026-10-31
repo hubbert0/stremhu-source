@@ -1,5 +1,5 @@
-# Az automatikus karbantartás (deploy/scripts: önjavító figyelő, heti frissítés)
-# és a telepítő ellenőrzése: shellcheck + tesztek hamis curl/docker/git-tel.
+# Az automatikus karbantartás (deploy/scripts: önjavító figyelő, heti frissítés),
+# a költöztető és a telepítő ellenőrzése: shellcheck + tesztek hamis ssh/curl/docker-rel.
 
 name: Karbantartás-szkriptek
 
@@ -10,6 +10,7 @@ on:
     paths:
       - "deploy/scripts/**"
       - "deploy/install.sh"
+      - "deploy/koltozes.sh"
       - ".github/workflows/karbantartas.yaml"
   workflow_dispatch:
 
@@ -34,10 +35,14 @@ jobs:
           python-version: "3.12"
 
       - name: Shellcheck
-        run: shellcheck -x -s sh deploy/scripts/*.sh deploy/install.sh
+        run: |
+          shellcheck -x -s sh deploy/scripts/*.sh deploy/install.sh
+          shellcheck -x deploy/koltozes.sh
 
       - name: Szintaxis (dash)
-        run: for f in deploy/scripts/*.sh deploy/install.sh; do dash -n "$f"; done
+        run: |
+          for f in deploy/scripts/*.sh deploy/install.sh; do dash -n "$f"; done
+          bash -n deploy/koltozes.sh
 
       - name: Pytest
         run: |

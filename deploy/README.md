@@ -508,6 +508,28 @@ A telepítő két ütemezett feladatot állít be a szerveren (cron). Mindkettő
 
 A Windowsos, otthoni futtatásnál ([15. fejezet](#15-futtatás-otthoni-windows-gépen)) nincs cron, ott ez a két feladat nem fut.
 
+### Költözés új szerverre
+
+Másik (pl. kisebb, olcsóbb) szerverre a `deploy/koltozes.sh` viszi át a rendszert. Minden átkerül: beállítások, adatbázisok, a széf, a mentés beállítása és a **Tailscale-azonosítók** – ezért minden cím ugyanaz marad, a család Stremiójában semmit nem kell átállítani. A kiesés kb. 5 perc.
+
+1. Rendeld meg az új szervert (Ubuntu 24.04, ugyanabban a régióban). A root-jelszót tedd a Széfbe.
+2. Lépj be az **új** szerverre: `ssh root@ÚJ-IP-CÍM` (az első belépéskor `yes`).
+3. Futtasd ott:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/koltozes.sh -o koltozes.sh
+   bash koltozes.sh RÉGI-IP-CÍM
+   ```
+   Kéri a **régi** szerver root-jelszavát, majd megkérdezi, mehet-e (`i`).
+4. A szkript:
+   - előkészíti az újat (Docker, repó, a régi `.env`-je, image-ek) – a régi közben még fut;
+   - leállítja a régit (a konténereket nem törli), és ott kikapcsolja az automatikus karbantartást;
+   - átmásolja az összes adatkötetet, és fájlszám + méret alapján ellenőrzi, hogy hiánytalan-e;
+   - elindítja az újat, kívülről ellenőrzi az öt nyilvános címet (ami nem válaszol, azt egyszer újraindítja);
+   - átveszi a régi szerver SSH-gépkulcsát és belépési kulcsait, így a saját gépeden a régi névvel (PowerShell, Szerverpult.exe) semmit nem kell újra beállítani.
+5. A végén kiírja a teendőket: a szerver nevét (pl. myaddr.io) állítsd át az új IP-re, nézz bele a Stremióba, és pár nap múlva mondd le a régi szervert.
+
+Ha a leállítás és az indítás között bármi hiba történik, a szkript **magától visszaindítja a régi rendszert**. A régi szervert a költözés után ne indítsd el újra: két azonos Tailscale-gép ütközne.
+
 A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://github.com/hubbert0/stremhu-source/releases/download/helyi-pult/Szerverpult.exe)-t, és cseréld le a régit (előtte zárd be a fekete ablakot). Az adataid megmaradnak.
 
 **Ha a hivatalos StremHU átveszi a #283-as kiegészítést,** a `.env`-ben a `STREMHU_IMAGE` sor átírható `s4pp1/stremhu-source:latest`-re. Ilyenkor viszont a TorBox-helykezelés nem fut (az csak ebben a forkban van).
