@@ -48,6 +48,7 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről, vagy SSH-alagúton |
 | `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről, vagy SSH-alagúton |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
+| *cron a szerveren* (`deploy/scripts/`) | önjavító figyelő (3 percenként) és heti automatikus frissítés | – |
 
 ## 2. Fogalmak
 
@@ -484,6 +485,29 @@ A `torbox` ágra kerülő minden módosítás után a GitHub automatikusan új i
 
 A frissítés letölti a repó és az image-ek új változatát, és újraindítja a megváltozott konténereket (1–2 perc kiesés lehet). A beállításaid, fiókjaid, a széf és a `.env` megmaradnak.
 
+### Automatikus karbantartás
+
+A telepítő két ütemezett feladatot állít be a szerveren (cron). Mindkettő az állapotfigyelő ntfy-témájára küld értesítést, így a telefonodon látod, mi történt.
+
+**Önjavító figyelő – 3 percenként.** Kívülről (a Funnelen át, ahogy a családtagok Stremiója is látja) megnézi az öt nyilvános címet: StremHU, AIOStreams, TMDB-addon, LeLibrary, Magyar feliratok. Ha egy cím **3 egymás utáni ellenőrzésen** (kb. 10 percig) nem válaszol, a hozzá tartozó két konténert (Tailscale + program) újraindítja, és értesítést küld: *„LeLibrary újraindítva”*.
+- Ugyanazt a szolgáltatást **legfeljebb óránként egyszer** indítja újra; ha az sem segít, az állapotfigyelő továbbra is jelez, és kézzel kell ránézni.
+- Ha **mind az öt** cím egyszerre elérhetetlen, nem indít újra semmit: az hálózati vagy Tailscale-hiba, amin az újraindítás nem segít.
+- A heti frissítés közben nem fut.
+
+**Heti frissítés – vasárnap hajnali 5-kor** (a szerver órája szerint, a 4 órás mentés után). Letölti a repó és az image-ek új változatát, felügyelet nélküli módban lefuttatja a telepítőt (kérdések nélkül, a `.env` új sorait pótolja), újraindítja, ami változott, és törli a régi image-eket. 3 perc múlva kívülről ellenőrzi a nyilvános címeket, és értesítést küld:
+- *„Heti frissítés kész”* – halk értesítés, ha minden működik;
+- *„Heti frissítés kész, de valami nem válaszol”* – ezt az önjavító kb. 10 percen belül kezeli;
+- *„Heti frissítés: hiba”* – az utolsó naplósorokkal; ilyenkor semmi nem romlik el, csak a frissítés maradt el.
+
+| | |
+|---|---|
+| Napló | `tail -n 30 /var/log/stremhu-karbantartas.log` |
+| Kikapcsolás | a `.env`-ben `ONJAVITO=0` (figyelő) vagy `AUTO_FRISSITES=0` (heti frissítés) – a következő futástól érvényes |
+| Kézi heti frissítés azonnal | `sh ~/stremhu-source/deploy/scripts/frissites.sh` |
+| Az ütemezés | `/etc/cron.d/stremhu-torbox` (a telepítő minden futáskor újraírja) |
+
+A Windowsos, otthoni futtatásnál ([15. fejezet](#15-futtatás-otthoni-windows-gépen)) nincs cron, ott ez a két feladat nem fut.
+
 A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://github.com/hubbert0/stremhu-source/releases/download/helyi-pult/Szerverpult.exe)-t, és cseréld le a régit (előtte zárd be a fekete ablakot). Az adataid megmaradnak.
 
 **Ha a hivatalos StremHU átveszi a #283-as kiegészítést,** a `.env`-ben a `STREMHU_IMAGE` sor átírható `s4pp1/stremhu-source:latest`-re. Ilyenkor viszont a TorBox-helykezelés nem fut (az csak ebben a forkban van).
@@ -502,7 +526,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | Tünet | Mit nézz / mit csinálj |
 |---|---|
 | Egy cím nem töltődik be | `docker compose ps` – fut-e a konténer? Ha nem: `docker compose up -d`. Napló: `docker compose logs --tail 100 NÉV` |
-| Egy nyilvános cím nem válaszol (a böngésző sokáig tölt, a pult *ConnectTimeout*-ot ír), a többi működik, a konténer pedig *healthy* | a Tailscale újraindításkor ritkán rossz állapotban marad. A hozzá tartozó két konténer újraindítása megoldja, pl. a LeLibrarynél: `docker compose up -d --force-recreate ts-lelibrary lelibrary` (a többinél: `ts-stremhu stremhu`, `ts-aiostreams aiostreams`, `ts-tmdb tmdb`, `ts-felirat feliratok`), majd 1 perc várakozás |
+| Egy nyilvános cím nem válaszol (a böngésző sokáig tölt, a pult *ConnectTimeout*-ot ír), a többi működik, a konténer pedig *healthy* | a Tailscale újraindításkor ritkán rossz állapotban marad. Az önjavító figyelő kb. 10 perc után magától újraindítja ([11. fejezet](#11-frissítés)); azonnal kézzel is lehet – a hozzá tartozó két konténer újraindítása megoldja, pl. a LeLibrarynél: `docker compose up -d --force-recreate ts-lelibrary lelibrary` (a többinél: `ts-stremhu stremhu`, `ts-aiostreams aiostreams`, `ts-tmdb tmdb`, `ts-felirat feliratok`), majd 1 perc várakozás |
 | A Tailscale-konténer nincs bent | `docker compose exec ts-stremhu tailscale status` – ha *Logged out*, futtasd újra a telepítőt, és nyisd meg a kiírt belépő linket |
 | `denied` / `unauthorized` image-letöltéskor | GitHubon: profil → *Packages* → a csomag → *Package settings* → *Change visibility* → **Public** |
 | Nincs magyar találat a Stremióban | 1) a [5.1](#51-stremhu) ellenőrző címe XML-t ad-e; 2) a TMDB-addonban be van-e kapcsolva az IMDb Integration; 3) az AIOStreamsben jó-e a Torznab URL és a kulcs |
@@ -533,6 +557,7 @@ Mindegyik a `~/stremhu-source/deploy` mappában (`cd ~/stremhu-source/deploy`):
 | `docker compose pull && docker compose up -d` | új image-ek letöltése és indítása |
 | `df -h /` | szabad lemezhely |
 | `docker image prune -f` | régi, nem használt image-ek törlése |
+| `tail -n 30 /var/log/stremhu-karbantartas.log` | az önjavító figyelő és a heti frissítés naplója |
 
 ## 15. Futtatás otthoni Windows-gépen
 

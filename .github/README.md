@@ -28,6 +28,7 @@ flowchart LR
 | **Magyar feliratok** | Felirataddon a feliratok.eu-hoz, javított ékezetekkel, a kiadáshoz illő sorrendben | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **Állapotfigyelő** | Gatus: mi működik, mi nem; hiba esetén értesítés a telefonra (ntfy) | csak a saját tailnetedről |
 | **Mentés** | Backrest: titkosított napi mentés felhőtárhelyre | csak a saját tailnetedről |
+| **Automatikus karbantartás** | Önjavító figyelő (3 percenként: ami nem válaszol, újraindítja) és heti automatikus frissítés, értesítéssel | a szerveren, ütemezve (cron) |
 | **TorBox-helykezelés** | Figyeli a TorBox aktív helyeit (Pro: 10), és mindig hagy 2-t szabadon, a seedelési kötelezettséget betartva | a StremHU-n belül fut |
 | **Szerverpult** | Böngészős kezelőfelület a szerveren: állapot, Docker, frissítés, széf, terminál | csak a saját tailnetedről |
 | **Helyi Szerverpult** | Ugyanez Windows-programként a saját gépeden, SSH-n át; UltraVNC-indítással | csak a saját gépedről |
@@ -60,6 +61,7 @@ A fork kapcsolatban marad az eredetivel, így a StremHU új verziói átvehetők
 | `deploy/helyi-pult/` | a Windowsos Szerverpult (`Szerverpult.exe`) |
 | `deploy/feliratok/` | a felirataddon (feliratok.eu) |
 | `deploy/gatus/` | az állapotfigyelő beállításai |
+| `deploy/scripts/` | az önjavító figyelő és a heti frissítés (cron-szkriptek) |
 | `deploy/lelibrary/` | a LeLibrary magyarítása (a build előtt alkalmazott módosítás) |
 | `server/app/modules/torbox_seed/` | a TorBox-helykezelés |
 | `server/`, `client/` | a StremHU (szerver és webes felület) |

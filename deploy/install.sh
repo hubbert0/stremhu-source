@@ -8,11 +8,15 @@
 # Letölti/frissíti a repót, létrehozza a .env-et a titkokkal, bekéri a tailnet
 # nevét és a Tailscale auth key-t, majd elindítja a konténereket.
 # Többször is futtatható: a meglévő .env-et és beállításokat nem írja felül.
+#
+# STREMHU_AUTO=1: felügyelet nélküli mód (a heti automatikus frissítés használja):
+# nem kérdez semmit, és a végén nem írja ki a címeket és a jelszavakat.
 set -eu
 
 REPO_URL="https://github.com/hubbert0/stremhu-source.git"
 BRANCH="torbox"
-DIR="${HOME}/stremhu-source"
+DIR="${STREMHU_DIR:-${HOME}/stremhu-source}"
+AUTO="${STREMHU_AUTO:-0}"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Hiba: a Docker nincs telepítve. Telepítés: curl -fsSL https://get.docker.com | sh"
@@ -36,6 +40,11 @@ fi
 
 cd "${DIR}/deploy"
 sh init-env.sh
+
+if [ "${AUTO}" = "1" ] && grep -q '^TAILNET=valami-nev\.ts\.net\|^TS_AUTHKEY=tskey-auth-XXXXXXXXXXXX' .env; then
+  echo "Hiba: a .env még nincs kitöltve (TAILNET / TS_AUTHKEY). Futtasd kézzel: sh install.sh"
+  exit 1
+fi
 
 if grep -q '^TAILNET=valami-nev\.ts\.net' .env; then
   printf 'Tailnet neve (Tailscale admin -> DNS, pl. valami-nev.ts.net): '
@@ -64,6 +73,8 @@ ensure_line PULT_USER "admin"
 ensure_line LELIBRARY_HOSTNAME "lelibrary"
 ensure_line FELIRAT_HOSTNAME "felirat"
 ensure_line REPO_DIR "${DIR}"
+ensure_line ONJAVITO "1"
+ensure_line AUTO_FRISSITES "1"
 sed -i "s|^REPO_DIR=.*|REPO_DIR=${DIR}|" .env
 
 # Hiányzó titkok generálása (a meglévőket nem írja felül).
@@ -91,7 +102,7 @@ fi
 
 # Üres kulcs esetén rákérdez (Enter = kihagyás).
 ask_key() {
-  if grep -q "^$1=$" .env; then
+  if [ "${AUTO}" != "1" ] && grep -q "^$1=$" .env; then
     printf '%s (Enter = kihagyás): ' "$2"
     read -r VALUE </dev/tty
     if [ -n "${VALUE}" ]; then
@@ -106,6 +117,42 @@ echo "Konténerek letöltése és indítása..."
 # Ha egy image nem tölthető le (pl. a pult), az "up" helyben építi meg.
 docker compose pull || echo "Figyelem: nem minden image tölthető le, a hiányzókat helyben építem."
 docker compose up -d
+
+# Automatikus karbantartás (cron): önjavító figyelő 3 percenként, frissítés
+# vasárnap hajnali 5-kor. Kikapcsolás a .env-ben: ONJAVITO=0, AUTO_FRISSITES=0.
+install_cron() {
+  CRON_FILE="/etc/cron.d/stremhu-torbox"
+  if [ "$(id -u)" != "0" ]; then
+    echo "Figyelem: nem rootként fut, az automatikus karbantartás nincs beállítva."
+    return 0
+  fi
+  if ! command -v cron >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    apt-get install -y -q cron >/dev/null 2>&1 || true
+  fi
+  if [ ! -d /etc/cron.d ]; then
+    echo "Figyelem: nincs cron (/etc/cron.d), az automatikus karbantartás nincs beállítva."
+    return 0
+  fi
+  cat > "${CRON_FILE}.tmp" <<CRON
+# StremHU – automatikus karbantartás. Az install.sh írja, kézzel ne szerkeszd.
+# Kikapcsolás a .env-ben: ONJAVITO=0 (önjavító figyelő), AUTO_FRISSITES=0 (heti frissítés).
+# Napló: /var/log/stremhu-karbantartas.log
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOME=${HOME}
+*/3 * * * * root /bin/sh ${DIR}/deploy/scripts/onjavito.sh >/dev/null 2>&1
+0 5 * * 0 root /bin/sh ${DIR}/deploy/scripts/frissites.sh >/dev/null 2>&1
+CRON
+  chmod 644 "${CRON_FILE}.tmp"
+  mv "${CRON_FILE}.tmp" "${CRON_FILE}"
+}
+install_cron
+
+if [ "${AUTO}" = "1" ]; then
+  echo "Frissítés kész."
+  exit 0
+fi
+
 docker compose ps
 
 # Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
@@ -152,3 +199,6 @@ echo "  majd a böngészőben: http://localhost:8090 és http://localhost:9898"
 echo
 echo "Értesítések a telefonra: telepítsd az ntfy alkalmazást, és iratkozz fel erre a témára:"
 echo "  ${NTFY_NOW}"
+echo
+echo "Automatikus karbantartás: önjavító figyelő 3 percenként, frissítés vasárnap hajnali 5-kor."
+echo "  Napló: tail -n 30 /var/log/stremhu-karbantartas.log"

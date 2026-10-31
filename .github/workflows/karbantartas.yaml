@@ -1,0 +1,45 @@
+# Az automatikus karbantartás (deploy/scripts: önjavító figyelő, heti frissítés)
+# és a telepítő ellenőrzése: shellcheck + tesztek hamis curl/docker/git-tel.
+
+name: Karbantartás-szkriptek
+
+on:
+  push:
+    branches:
+      - torbox
+    paths:
+      - "deploy/scripts/**"
+      - "deploy/install.sh"
+      - ".github/workflows/karbantartas.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: karbantartas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Shellcheck és tesztek
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git Checkout
+        uses: actions/checkout@v6
+
+      - name: Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Shellcheck
+        run: shellcheck -x -s sh deploy/scripts/*.sh deploy/install.sh
+
+      - name: Szintaxis (dash)
+        run: for f in deploy/scripts/*.sh deploy/install.sh; do dash -n "$f"; done
+
+      - name: Pytest
+        run: |
+          pip install pytest
+          python -m pytest -q deploy/scripts/tests
