@@ -202,6 +202,7 @@ def test_full_flow(tmp_path: Path, ssh_server: SimpleNamespace) -> None:
         assert any(
             s["url"].startswith("https://stremhu-tb.pelda-net.ts.net") for s in services
         )
+        assert any(s["name"] == "LeLibrary" for s in services)
 
         check = client.get("/api/ssh/check").json()
         assert check["ok"] is True

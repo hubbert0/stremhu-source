@@ -40,5 +40,6 @@ def load_settings() -> Settings:
             "aiostreams": os.environ.get("AIOSTREAMS_HOSTNAME", "aiostreams"),
             "tmdb": os.environ.get("TMDB_HOSTNAME", "tmdb"),
             "pult": os.environ.get("PULT_HOSTNAME", "pult"),
+            "lelibrary": os.environ.get("LELIBRARY_HOSTNAME", "lelibrary"),
         },
     )

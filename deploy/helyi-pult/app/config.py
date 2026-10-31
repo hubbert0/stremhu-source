@@ -68,6 +68,7 @@ class Hostnames(BaseModel):
     aiostreams: str = Field(default="aiostreams", pattern=r"^[a-z0-9-]{1,63}$")
     tmdb: str = Field(default="tmdb", pattern=r"^[a-z0-9-]{1,63}$")
     pult: str = Field(default="pult", pattern=r"^[a-z0-9-]{1,63}$")
+    lelibrary: str = Field(default="lelibrary", pattern=r"^[a-z0-9-]{1,63}$")
 
 
 class Settings(BaseModel):

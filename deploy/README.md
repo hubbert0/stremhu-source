@@ -8,7 +8,7 @@ Ez a leírás végigvezet a rendszer telepítésén, beállításán és mindenn
 2. [Fogalmak](#2-fogalmak)
 3. [Amire szükséged lesz](#3-amire-szükséged-lesz)
 4. [Telepítés a szerverre](#4-telepítés-a-szerverre)
-5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio](#5-első-beállítás)
+5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary](#5-első-beállítás)
 6. [Címek és jelszavak – mi hol van?](#6-címek-és-jelszavak)
 7. [A `.env` fájl](#7-a-env-fájl)
 8. [TorBox-helykezelés](#8-torbox-helykezelés)
@@ -35,7 +35,7 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 
 - A **szerver** (pl. egy Contabo VPS) csak keres és továbbít – kis forgalmú API-hívások. A filmek **nem** töltődnek le rá, és nem rajta keresztül mennek a lejátszáshoz.
 - A **TorBox** tölti le a torrentet, tárolja, seedeli, és onnan streamel a Stremio. Ami már fent van a TorBoxon (gyorsítótár), az azonnal indul.
-- A szerveren 10 Docker-konténer fut:
+- A szerveren ezek a Docker-konténerek futnak:
 
 | Konténer | Feladat | Elérhető |
 |---|---|---|
@@ -43,6 +43,7 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `aiostreams` + `ts-aiostreams` | AIOStreams – ezt használja a Stremio | nyilvános HTTPS (Funnel) |
 | `tmdb` + `ts-tmdb` | saját TMDB-addon (magyar címek) | nyilvános HTTPS (Funnel) |
 | `stremthru` | `.torrent` feltöltése a TorBoxra | csak belül |
+| `lelibrary` + `ts-lelibrary` + `lelibrary-db` + `lelibrary-redis` | LeLibrary: a TorBoxon lévő tartalom poszterekkel a Stremio kezdőlapján | nyilvános HTTPS (Funnel) |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
 
 ## 2. Fogalmak
@@ -181,11 +182,30 @@ Opcionális: a `FANART_API_KEY` sorba fanart.tv-kulcsot írva szebb logókat kap
 
 ### 5.4 Stremio
 
-- Maradjon telepítve: **AIOStreams** és a **saját TMDB-addon**. A Cinemeta beépített, nem törölhető – nem zavar.
+- Maradjon telepítve: **AIOStreams**, a **saját TMDB-addon** és a **LeLibrary** ([5.5](#55-lelibrary--a-torbox-könyvtár-a-kezdőlapon)). A Cinemeta beépített, nem törölhető – nem zavar.
 - Töröld: a régi, nyilvános TMDB-addont és minden olyan régi addont, amely ugyanazt csinálja (különben duplán jelennek meg a találatok).
-- Az addonok a Stremio-fiókhoz kötődnek; ha egy másik eszközön még a régiek látszanak, ott jelentkezz ki és be.
+- **Profilok** (Stremio Supporter-csomag): minden profilnak **saját addonlistája** van. Az addonokat profilonként egyszer telepíteni kell – a Master profilban telepített addon a többi profilban nem jelenik meg.
+- Az addonlista a fiókhoz (profilhoz) kötődik, és a Stremio induláskor frissíti. Ha egy eszközön még a régi látszik: zárd be teljesen az appot (Androidon *Kényszerített leállítás*), és nyisd meg újra; ha így sem, jelentkezz ki és be.
+- Az **AIOStreams beállításai** (szűrés, rendezés, források) azonnal mindenhol érvényesek, újratelepítés nélkül. Újratelepíteni csak katalógus- vagy addonnév-változásnál kell.
 
 **Próba:** keress rá egy filmre, ami biztosan fent van nCore-on. A `StremHU` találatok között lesznek azonnal indíthatók (TorBox-gyorsítótár) és letöltendők. Nem gyorsítótárazott találatnál az első indításkor meg kell várni, amíg a TorBox letölti (addig egy „próbáld később” videót kapsz).
+
+### 5.5 LeLibrary – a TorBox-könyvtár a kezdőlapon
+
+A [LeLibrary](https://github.com/leleasley/LeLibrary) a TorBoxon lévő filmeket és sorozatokat poszterekkel, sorokba rendezve mutatja a Stremio kezdőlapján. A sorozatokat évadokra és részekre bontja, és lejátszáskor elsőként a TorBoxon már fent lévő (azonnal induló) példányt kínálja. A csomag magyarított változatot futtat: a nyelv alapból magyar, és be van kapcsolva az IMDb-azonosítók használata – így az adatlapot a saját TMDB-addon adja, és **működik a következő rész automatikus indítása**.
+
+1. Nyisd meg: `https://lelibrary.<tailnet>/configure`
+2. Válaszd a **Settle In** szintet (később bármikor bővíthető újratelepítés nélkül).
+3. **TorBox:** kapcsold be, és add meg a TorBox API-kulcsot.
+4. **TMDB-kulcs:** ugyanaz, mint a TMDB-addoné (`grep TMDB_API_KEY ~/stremhu-source/deploy/.env`).
+5. Ellenőrizd: **Language: Magyar**, **Use Main Metadata: bekapcsolva**.
+6. Adj meg egy **beállítási jelszót** (legalább 8 karakter) – csak a módosításhoz kell.
+7. **Create my setup** → a záró oldalon megkapod az **install linket** és a **szerkesztő linket**. Mentsd el őket a jelszóval együtt a pult Széfjébe. Az install link titkos: aki ismeri, a te könyvtáradból nézhet.
+8. **Telepítés a Stremióba, minden profilba:** az *Open in Stremio* gomb abba a profilba telepít, amelyik épp aktív. A többi profilnál váltsd át a profilt, és nyisd meg újra az install linket (vagy illeszd be a Stremio *Addons* keresőjébe).
+
+A sorozatoknál a következő rész magától indul, ha a Stremio lejátszó beállításaiban be van kapcsolva a következő rész automatikus lejátszása. Új letöltés a TorBoxon pár percen belül megjelenik a könyvtárban.
+
+Beállítás módosítása: nyisd meg a szerkesztő linket, és add meg a jelszót – a változás újratelepítés nélkül érvényes, kivéve ha új sort (katalógust) adsz hozzá.
 
 ## 6. Címek és jelszavak
 
@@ -194,6 +214,7 @@ Opcionális: a `FANART_API_KEY` sorba fanart.tv-kulcsot írva szebb logókat kap
 | StremHU | `https://stremhu-tb.<tailnet>` | a saját admin fiókod | te adtad meg az első belépéskor |
 | AIOStreams | `https://aiostreams.<tailnet>/stremio/configure` | `admin` | `.env` → `AIOSTREAMS_AUTH=admin:JELSZÓ` |
 | TMDB-addon | `https://tmdb.<tailnet>/configure` | nincs | – |
+| LeLibrary | `https://lelibrary.<tailnet>/configure` | a beállítás szerkesztő linkje + jelszó | te adtad meg a beállításkor |
 | Szerverpult | `https://pult.<tailnet>` (csak tailnetről) | `admin` | `.env` → `PULT_PASSWORD` |
 | Webes terminál | `https://pult.<tailnet>:8443` (csak tailnetről) | mint a Szerverpult | `.env` → `PULT_PASSWORD` |
 | Helyi Szerverpult | a `Szerverpult.exe` nyitja meg | nincs (csak a saját gépedről) | – |
@@ -217,6 +238,8 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `TS_AUTHKEY` | Tailscale auth key (csak az első belépéshez kell) |
 | `STREMHU_HOSTNAME`, `AIOSTREAMS_HOSTNAME`, `TMDB_HOSTNAME`, `PULT_HOSTNAME` | a gépek neve a tailneten (ebből lesz a cím) |
 | `TMDB_API_KEY`, `FANART_API_KEY` | a TMDB-addon kulcsai |
+| `LELIBRARY_HOSTNAME` | a LeLibrary gépneve a tailneten |
+| `LELIBRARY_CONFIG_SECRET`, `LELIBRARY_SELFHOST_SECRET`, `LELIBRARY_DB_PASSWORD` | a LeLibrary titkai (generált) – **első indítás után ne változtasd meg**, különben a mentett beállítások és az adatbázis elérhetetlenné válnak |
 | `STREMHU_IMAGE` | melyik StremHU-image fusson (alapból ennek a forknak a buildje) |
 | `STREMHU_SESSION_SECRET` | a StremHU belső titka (generált, ne add ki) |
 | `TORBOX_API_KEY` | TorBox-kulcs a helykezeléshez; üresen a helykezelés nem fut |
@@ -364,7 +387,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 
 - **A repó nyilvános** (nyilvános projekt forkja nem lehet privát), de nincs benne személyes adat: se szervercím, se tailnet-név, se jelszó vagy kulcs.
 - **A titkok helye:** a szerveren a `.env` (csak root olvashatja), a Windows-gépen a `%APPDATA%\Szerverpult`, a széf tartalma titkosítva.
-- **Nyilvános (Funnel) címek:** StremHU, AIOStreams, TMDB-addon – mindegyik saját belépéssel vagy kulccsal védett. A StremThru kívülről nem látszik.
+- **Nyilvános (Funnel) címek:** StremHU, AIOStreams, TMDB-addon, LeLibrary – mindegyik saját belépéssel, jelszóval vagy titkos linkkel védett. A StremThru, a LeLibrary adatbázisa és gyorsítótára kívülről nem látszik.
 - **Csak tailnetről:** a Szerverpult és a webes terminál.
 - **Ha egy kulcs vagy jelszó illetéktelen kezébe kerülhetett** (pl. elküldted valakinek): Tailscale auth key → visszavonás a Keys oldalon; TorBox API-kulcs → újragenerálás a TorBoxban, és csere a `.env`-ben és az AIOStreamsben; pult-jelszó → új érték a `.env`-ben, majd `docker compose up -d pult terminal`.
 
@@ -378,6 +401,8 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | Nincs magyar találat a Stremióban | 1) a [5.1](#51-stremhu) ellenőrző címe XML-t ad-e; 2) a TMDB-addonban be van-e kapcsolva az IMDb Integration; 3) az AIOStreamsben jó-e a Torznab URL és a kulcs |
 | A film nem indul, „próbáld később” | nem gyorsítótárazott torrent: a TorBox még tölti. Ha sokáig áll: TorBox-jelentés – van-e szabad hely? |
 | A StremThru újraindul / memóriahiány | a `compose.yaml`-ben a `STREMTHRU_FEATURE` sor kikapcsolja a nagy szinkronokat; ne töröld |
+| A LeLibrary-sorok üresek | a TorBox-kulcs és a TMDB-kulcs helyes-e (szerkesztő link); új letöltés pár perc után jelenik meg. Napló: `docker compose logs --tail 100 lelibrary` |
+| A LeLibrary nem indul | `docker compose ps` – a `lelibrary-db` és a `lelibrary-redis` állapota `healthy` legyen; memória: `free -h` |
 | A Szerverpult nem nyílik meg | azon az eszközön fut-e a Tailscale? Szerveroldalon: `docker compose exec ts-pult tailscale serve status` |
 | Helyi pult: *Hibás adat: szerver címe* | a címet `https://` és port nélkül írd be ([10. fejezet](#telepítés-és-első-indítás)) |
 | Helyi pult: *a szerver elutasította a belépést* | rossz felhasználó (legyen `root`) vagy jelszó; vagy a kulcs nincs telepítve |
@@ -433,6 +458,7 @@ A szerveres pult (`pult`, `terminal`) Linux-szerverre készült; Windowson a Hel
 |---|---|---|
 | `torbox-ghcr.yaml` | `server/`, `client/` változásakor | tesztek, majd `ghcr.io/hubbert0/stremhu-source:torbox` |
 | `pult-ghcr.yaml` | `deploy/pult/` változásakor | tesztek, majd `ghcr.io/hubbert0/stremhu-pult:latest` |
+| `lelibrary-ghcr.yaml` | `deploy/lelibrary/` változásakor és hetente | a legfrissebb LeLibrary-kiadás a `deploy/lelibrary/patch.py` magyarításával: `ghcr.io/hubbert0/lelibrary-hu:latest` |
 | `helyi-pult.yaml` | `deploy/helyi-pult/` változásakor | tesztek (Linuxon, SSH-teszt-szerverrel), Windows-build, indítási próba, majd a `helyi-pult` kiadásba feltöltés |
 
 **A hivatalos StremHU frissítéseinek átvétele:**

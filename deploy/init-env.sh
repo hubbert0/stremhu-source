@@ -30,6 +30,10 @@ sed -i "s|^AIOSTREAMS_SECRET_KEY=.*|AIOSTREAMS_SECRET_KEY=$(rand_hex)|" .env
 AIO_PASS="$(rand_pass)"
 sed -i "s|^AIOSTREAMS_AUTH=.*|AIOSTREAMS_AUTH=admin:${AIO_PASS}|" .env
 
+sed -i "s|^LELIBRARY_CONFIG_SECRET=.*|LELIBRARY_CONFIG_SECRET=$(rand_hex)|" .env
+sed -i "s|^LELIBRARY_SELFHOST_SECRET=.*|LELIBRARY_SELFHOST_SECRET=$(rand_hex)|" .env
+sed -i "s|^LELIBRARY_DB_PASSWORD=.*|LELIBRARY_DB_PASSWORD=$(rand_pass)|" .env
+
 PULT_PASS="$(rand_pass)"
 sed -i "s|^PULT_PASSWORD=.*|PULT_PASSWORD=${PULT_PASS}|" .env
 

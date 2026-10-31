@@ -24,6 +24,7 @@ flowchart LR
 | **AIOStreams** | Ezt adod hozzá a Stremióhoz; összegyűjti a találatokat és a TorBoxra küldi | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **StremThru** | Feltölti a `.torrent`-et a TorBoxra | csak belül, kívülről nem látszik |
 | **TMDB-addon** | Magyar filmcímek, leírások, katalógusok a Stremióban | nyilvános HTTPS-cím (Tailscale Funnel) |
+| **LeLibrary** | A TorBoxon lévő filmek és sorozatok poszterekkel a Stremio kezdőlapján, a sorozatrészek egymás után | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **TorBox-helykezelés** | Figyeli a TorBox aktív helyeit (Pro: 10), és mindig hagy 2-t szabadon, a seedelési kötelezettséget betartva | a StremHU-n belül fut |
 | **Szerverpult** | Böngészős kezelőfelület a szerveren: állapot, Docker, frissítés, széf, terminál | csak a saját tailnetedről |
 | **Helyi Szerverpult** | Ugyanez Windows-programként a saját gépeden, SSH-n át; UltraVNC-indítással | csak a saját gépedről |
@@ -54,6 +55,7 @@ A fork kapcsolatban marad az eredetivel, így a StremHU új verziói átvehetők
 | `deploy/` | telepítőcsomag: `compose.yaml`, `install.sh`, `.env.example`, dokumentáció |
 | `deploy/pult/` | a szerveren futó Szerverpult |
 | `deploy/helyi-pult/` | a Windowsos Szerverpult (`Szerverpult.exe`) |
+| `deploy/lelibrary/` | a LeLibrary magyarítása (a build előtt alkalmazott módosítás) |
 | `server/app/modules/torbox_seed/` | a TorBox-helykezelés |
 | `server/`, `client/` | a StremHU (szerver és webes felület) |
 | `.github/workflows/` | automatikus tesztek és buildek |
@@ -66,6 +68,7 @@ A `torbox` ágra kerülő minden módosítás után a GitHub magától teszteli 
 |---|---|
 | TorBox build (GHCR) | `ghcr.io/hubbert0/stremhu-source:torbox` – a StremHU Docker-image-e |
 | Szerverpult build (GHCR) | `ghcr.io/hubbert0/stremhu-pult:latest` – a szerveres pult |
+| LeLibrary (magyar) build (GHCR) | `ghcr.io/hubbert0/lelibrary-hu:latest` – a LeLibrary magyarított image-e |
 | Helyi Szerverpult (Windows .exe) | [`Szerverpult.exe`](https://github.com/hubbert0/stremhu-source/releases/tag/helyi-pult) |
 
 A szerver frissítéskor ezeket tölti le.

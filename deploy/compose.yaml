@@ -4,9 +4,11 @@
 #           → StremThru (saját, belső) → TorBox → a lejátszás közvetlenül a TorBoxról megy.
 # A filmek nem érintik ezt a gépet; itt csak kis forgalmú API-hívások futnak.
 #
-# Kívülről két cím érhető el Tailscale Funnelen (HTTPS):
+# Kívülről ezek a címek érhetők el Tailscale Funnelen (HTTPS):
 #   https://${STREMHU_HOSTNAME}.${TAILNET}     – StremHU kezelőfelület
 #   https://${AIOSTREAMS_HOSTNAME}.${TAILNET}  – AIOStreams (ezt adod hozzá a Stremióhoz)
+#   https://${TMDB_HOSTNAME}.${TAILNET}        – saját TMDB-addon (magyar címek)
+#   https://${LELIBRARY_HOSTNAME}.${TAILNET}   – LeLibrary (TorBox-könyvtár a Stremióban)
 # A StremThru csak a belső Docker-hálózaton látszik.
 #
 # Szerverpult (csak a tailnetről, Funnel nélkül):
@@ -150,6 +152,79 @@ services:
       - stremthru-data:/app/data
     restart: unless-stopped
 
+  # ------------------------------------------- LeLibrary (TorBox-könyvtár)
+  # A TorBoxon lévő filmek és sorozatok poszterekkel a Stremio kezdőlapján.
+  # Beállítás: https://${LELIBRARY_HOSTNAME}.${TAILNET}/configure
+  ts-lelibrary:
+    image: tailscale/tailscale:latest
+    hostname: ${LELIBRARY_HOSTNAME:-lelibrary}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/serve.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-lelibrary-state:/var/lib/tailscale
+      - ./tailscale/lelibrary.json:/config/serve.json:ro
+    restart: unless-stopped
+
+  lelibrary:
+    image: ${LELIBRARY_IMAGE:-ghcr.io/hubbert0/lelibrary-hu:latest}
+    network_mode: service:ts-lelibrary
+    depends_on:
+      ts-lelibrary:
+        condition: service_started
+      lelibrary-db:
+        condition: service_healthy
+      lelibrary-redis:
+        condition: service_healthy
+    environment:
+      - TZ=Europe/Budapest
+      - PORT=7860
+      - BASE_URL=https://${LELIBRARY_HOSTNAME:-lelibrary}.${TAILNET}
+      # A mentett beállítások titkosítása – ne változtasd meg, különben a
+      # mentett beállítások olvashatatlanná válnak.
+      - CONFIG_SECRET=${LELIBRARY_CONFIG_SECRET:?Futtasd az install.sh-t}
+      - SELFHOST_CONFIGS_SECRET=${LELIBRARY_SELFHOST_SECRET:?Futtasd az install.sh-t}
+      # A cím nyilvános, ezért a mentett beállítások listája rejtve marad.
+      - SELFHOST_LIST_SETUPS=off
+      - DATABASE_URL=postgres://lelibrary:${LELIBRARY_DB_PASSWORD:?Futtasd az install.sh-t}@lelibrary-db:5432/lelibrary
+      - REDIS_HOST=lelibrary-redis
+      - REDIS_PORT=6379
+    volumes:
+      - lelibrary-data:/data
+    mem_limit: 1g
+    restart: unless-stopped
+
+  lelibrary-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=lelibrary
+      - POSTGRES_PASSWORD=${LELIBRARY_DB_PASSWORD:?Futtasd az install.sh-t}
+      - POSTGRES_DB=lelibrary
+    volumes:
+      - lelibrary-db:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lelibrary -d lelibrary"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  lelibrary-redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lfu
+    volumes:
+      - lelibrary-redis:/data
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
   # ---------------------------------------------------------- Szerverpult
   # Csak a tailnetről érhető el (a pult.json-ban nincs Funnel), és a
   # .env-ben lévő PULT_USER / PULT_PASSWORD kell hozzá. Root jogú
@@ -184,6 +259,7 @@ services:
       - STREMHU_HOSTNAME=${STREMHU_HOSTNAME}
       - AIOSTREAMS_HOSTNAME=${AIOSTREAMS_HOSTNAME}
       - TMDB_HOSTNAME=${TMDB_HOSTNAME:-tmdb}
+      - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
       - REPO_DIR=${REPO_DIR:-/root/stremhu-source}
     volumes:
       # A konténerek kezeléséhez és a frissítéshez (git pull + compose).
@@ -238,3 +314,7 @@ volumes:
   stremthru-data:
   ts-pult-state:
   pult-data:
+  ts-lelibrary-state:
+  lelibrary-data:
+  lelibrary-db:
+  lelibrary-redis:

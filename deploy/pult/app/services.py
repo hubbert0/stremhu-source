@@ -56,6 +56,12 @@ def default_services(settings: Settings) -> list[Service]:
                 "Szerver",
                 "Magyar címek és katalógusok",
             ),
+            _service(
+                "LeLibrary",
+                f"https://{host['lelibrary']}.{tn}/configure",
+                "Szerver",
+                "A TorBoxon lévő filmek és sorozatok a Stremio kezdőlapján",
+            ),
         ]
     services += [
         _service("TorBox", "https://torbox.app/dashboard", "Fiókok", check=False),

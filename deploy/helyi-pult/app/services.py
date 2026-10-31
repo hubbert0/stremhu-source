@@ -57,6 +57,12 @@ def default_services(settings: Settings) -> list[Service]:
                 "Magyar címek és katalógusok",
             ),
             _service(
+                "LeLibrary",
+                f"https://{host.lelibrary}.{tn}/configure",
+                "Szerver",
+                "A TorBoxon lévő filmek és sorozatok a Stremio kezdőlapján",
+            ),
+            _service(
                 "Szerverpult (tailnet)",
                 f"https://{host.pult}.{tn}",
                 "Szerver",

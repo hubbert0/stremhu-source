@@ -34,6 +34,9 @@ $content = $content -replace '(?m)^STREMHU_SESSION_SECRET=.*$', ('STREMHU_SESSIO
 $content = $content -replace '(?m)^AIOSTREAMS_SECRET_KEY=.*$', ('AIOSTREAMS_SECRET_KEY=' + (New-Hex))
 $content = $content -replace '(?m)^AIOSTREAMS_AUTH=.*$', ('AIOSTREAMS_AUTH=admin:' + $aioPass)
 $content = $content -replace '(?m)^PULT_PASSWORD=.*$', ('PULT_PASSWORD=' + $pultPass)
+$content = $content -replace '(?m)^LELIBRARY_CONFIG_SECRET=.*$', ('LELIBRARY_CONFIG_SECRET=' + (New-Hex))
+$content = $content -replace '(?m)^LELIBRARY_SELFHOST_SECRET=.*$', ('LELIBRARY_SELFHOST_SECRET=' + (New-Hex))
+$content = $content -replace '(?m)^LELIBRARY_DB_PASSWORD=.*$', ('LELIBRARY_DB_PASSWORD=' + (New-Hex).Substring(0, 20))
 
 # UTF-8 BOM nélkül, mert a Docker Compose a BOM-ot nem szereti.
 [System.IO.File]::WriteAllText($envPath, $content, $utf8NoBom)

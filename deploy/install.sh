@@ -61,19 +61,28 @@ ensure_line TMDB_API_KEY ""
 ensure_line FANART_API_KEY ""
 ensure_line PULT_HOSTNAME "pult"
 ensure_line PULT_USER "admin"
-ensure_line PULT_PASSWORD ""
+ensure_line LELIBRARY_HOSTNAME "lelibrary"
 ensure_line REPO_DIR "${DIR}"
 sed -i "s|^REPO_DIR=.*|REPO_DIR=${DIR}|" .env
 
-# A szerverpult jelszava: ha még nincs, generálunk egyet.
-if grep -q '^PULT_PASSWORD=$' .env; then
+# Hiányzó titkok generálása (a meglévőket nem írja felül).
+gen_secret() {
   if command -v openssl >/dev/null 2>&1; then
-    PULT_PASS="$(openssl rand -hex 10)"
+    openssl rand -hex "$1"
   else
-    PULT_PASS="$(od -An -N10 -tx1 /dev/urandom | tr -d ' \n')"
+    od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'
   fi
-  sed -i "s|^PULT_PASSWORD=.*|PULT_PASSWORD=${PULT_PASS}|" .env
-fi
+}
+ensure_secret() {
+  ensure_line "$1" ""
+  if grep -q "^$1=$" .env; then
+    sed -i "s|^$1=.*|$1=$(gen_secret "$2")|" .env
+  fi
+}
+ensure_secret PULT_PASSWORD 10
+ensure_secret LELIBRARY_CONFIG_SECRET 32
+ensure_secret LELIBRARY_SELFHOST_SECRET 32
+ensure_secret LELIBRARY_DB_PASSWORD 16
 
 # Üres kulcs esetén rákérdez (Enter = kihagyás).
 ask_key() {
@@ -96,7 +105,7 @@ docker compose ps
 
 # Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
 sleep 15
-for TS in ts-stremhu ts-aiostreams ts-tmdb ts-pult; do
+for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-pult; do
   STATUS="$(docker compose exec -T "${TS}" tailscale status 2>/dev/null || true)"
   if printf '%s' "${STATUS}" | grep -q 'Logged out\|NeedsLogin'; then
     echo
@@ -110,6 +119,7 @@ STREMHU_NOW="$(grep '^STREMHU_HOSTNAME=' .env | cut -d= -f2)"
 AIO_NOW="$(grep '^AIOSTREAMS_HOSTNAME=' .env | cut -d= -f2)"
 TMDB_NOW="$(grep '^TMDB_HOSTNAME=' .env | cut -d= -f2)"
 PULT_NOW="$(grep '^PULT_HOSTNAME=' .env | cut -d= -f2)"
+LEL_NOW="$(grep '^LELIBRARY_HOSTNAME=' .env | cut -d= -f2)"
 PULT_USER_NOW="$(grep '^PULT_USER=' .env | cut -d= -f2)"
 PULT_PASS_NOW="$(grep '^PULT_PASSWORD=' .env | cut -d= -f2)"
 
@@ -118,6 +128,7 @@ echo "Kész. Pár perc múlva elérhető:"
 echo "  StremHU:    https://${STREMHU_NOW}.${TAILNET_NOW}"
 echo "  AIOStreams: https://${AIO_NOW}.${TAILNET_NOW}/stremio/configure"
 echo "  TMDB-addon: https://${TMDB_NOW}.${TAILNET_NOW}/configure"
+echo "  LeLibrary:  https://${LEL_NOW}.${TAILNET_NOW}/configure"
 echo "AIOStreams-jelszó (ha elfelejtenéd):  grep AIOSTREAMS_AUTH ${DIR}/deploy/.env"
 echo
 echo "Szerverpult (csak a tailnetedről):"

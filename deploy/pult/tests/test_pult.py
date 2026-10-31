@@ -49,6 +49,7 @@ def test_default_services_use_tailnet(env: Path) -> None:
     urls = [str(s.url) for s in services]
     assert "https://stremhu-tb.pelda.ts.net/" in urls
     assert any(u.startswith("https://aiostreams.pelda.ts.net/") for u in urls)
+    assert "https://lelibrary.pelda.ts.net/configure" in urls
 
 
 def test_default_services_without_tailnet(
