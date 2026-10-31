@@ -208,7 +208,17 @@ class EmbyService:
                 item_type = LIBRARY_TYPES[kind]
                 if await client.count(item_type, view_id) == 0:
                     continue
-                genres = await client.genres(view_id, item_type)
+                try:
+                    genres = await client.genres(view_id, item_type)
+                except EmbyError as error:
+                    # A műfajlista nélkül is legyen sor, csak szűrés nélkül.
+                    logger.warning(
+                        "%s: a(z) %s műfajai nem tölthetők be: %s",
+                        server.name,
+                        view.get("Name"),
+                        error,
+                    )
+                    genres = []
                 entries.append(
                     {
                         "id": f"emby{server.index}-{view_id}-{kind}",

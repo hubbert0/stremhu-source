@@ -133,6 +133,7 @@ class FakeEmby:
         self.down = False
         self.expire_once = False
         self.item_params: list[dict[str, str]] = []
+        self.broken: set[str] = set()
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -155,6 +156,19 @@ class FakeEmby:
             self.tokens.discard(token)
             return httpx.Response(401)
         params = request.url.params
+        if path in self.broken:
+            return httpx.Response(500)
+        if path == "/Items/Filters":
+            types = (params.get("IncludeItemTypes") or "").split(",")
+            names = sorted(
+                {
+                    genre
+                    for i in ITEMS
+                    if i["Type"] in types and i["View"] == params.get("ParentId")
+                    for genre in i.get("Genres", [])
+                }
+            )
+            return httpx.Response(200, json={"Genres": names, "Years": []})
         if path == "/Users/u1/Views":
             return httpx.Response(200, json={"Items": VIEWS})
         if path == "/Genres":
@@ -544,3 +558,22 @@ def test_library_list_is_cached(tmp_path: Path, embys: dict[int, FakeEmby]) -> N
         get(client, "/manifest.json")
     assert before == 1
     assert embys[1].requests.count("/Users/u1/Views") == 1
+
+
+def test_genres_fallback_and_failure(
+    tmp_path: Path, embys: dict[int, FakeEmby]
+) -> None:
+    embys[1].broken = {"/Genres"}
+    embys[2].broken = {"/Genres", "/Items/Filters"}
+    with make_client(tmp_path, embys) as client:
+        catalogs = get(client, "/manifest.json")["catalogs"]
+    by_id = {c["id"]: c for c in catalogs}
+    genre1 = next(
+        e for e in by_id["emby1-vfilm-movie"]["extra"] if e["name"] == "genre"
+    )
+    genre2 = next(
+        e for e in by_id["emby2-vfilm-movie"]["extra"] if e["name"] == "genre"
+    )
+    assert genre1["options"][-2:] == ["Dráma", "Sci-Fi"]
+    assert genre2["options"] == ["Rendezés: ABC", "Rendezés: évszám"]
+    assert "emby2-movie" not in by_id

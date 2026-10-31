@@ -209,23 +209,30 @@ class EmbyClient:
         return list(data.get("Items") or [])
 
     async def genres(self, parent_id: str, item_type: str) -> list[str]:
+        """A könyvtár műfajai. Ha a /Genres nem működik, az /Items/Filters-t próbálja."""
         await self.login()
-        data = await self.get_json(
-            "/Genres",
-            {
-                "UserId": self.user_id,
-                "ParentId": parent_id,
-                "IncludeItemTypes": item_type,
-                "Recursive": "true",
-                "SortBy": "SortName",
-                "SortOrder": "Ascending",
-            },
-        )
-        return [
-            str(item["Name"])
-            for item in data.get("Items") or []
-            if isinstance(item, dict) and item.get("Name")
-        ]
+        params = {
+            "UserId": self.user_id,
+            "ParentId": parent_id,
+            "IncludeItemTypes": item_type,
+            "Recursive": "true",
+        }
+        try:
+            data = await self.get_json(
+                "/Genres", {**params, "SortBy": "SortName", "SortOrder": "Ascending"}
+            )
+            names = [
+                str(item["Name"])
+                for item in data.get("Items") or []
+                if isinstance(item, dict) and item.get("Name")
+            ]
+        except EmbyError as error:
+            logger.info(
+                "%s: /Genres nem működik (%s), /Items/Filters", self.server.name, error
+            )
+            data = await self.get_json("/Items/Filters", params)
+            names = [str(name) for name in data.get("Genres") or [] if name]
+        return sorted(set(names), key=str.casefold)
 
     async def find(
         self, item_type: str, provider: str, value: str

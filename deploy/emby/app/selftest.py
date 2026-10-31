@@ -42,8 +42,15 @@ async def check() -> int:
                     continue
                 films = await client.count(LIBRARY_TYPES["movie"], view_id)
                 shows = await client.count(LIBRARY_TYPES["series"], view_id)
+                try:
+                    kind_type = LIBRARY_TYPES[
+                        "series" if shows and not films else "movie"
+                    ]
+                    genres = f"{len(await client.genres(view_id, kind_type))} műfaj"
+                except EmbyError as error:
+                    genres = f"műfajlista nem tölthető be: {error}"
                 print(
-                    f"    – {view.get('Name')} ({kind}): {films} film, {shows} sorozat"
+                    f"    – {view.get('Name')} ({kind}): {films} film, {shows} sorozat, {genres}"
                 )
         except EmbyError as error:
             failures += 1
