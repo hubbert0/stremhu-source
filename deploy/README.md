@@ -502,6 +502,7 @@ A Windowsos pult új verziója: töltsd le újra a [Szerverpult.exe](https://git
 | Tünet | Mit nézz / mit csinálj |
 |---|---|
 | Egy cím nem töltődik be | `docker compose ps` – fut-e a konténer? Ha nem: `docker compose up -d`. Napló: `docker compose logs --tail 100 NÉV` |
+| Egy nyilvános cím nem válaszol (a böngésző sokáig tölt, a pult *ConnectTimeout*-ot ír), a többi működik, a konténer pedig *healthy* | a Tailscale újraindításkor ritkán rossz állapotban marad. A hozzá tartozó két konténer újraindítása megoldja, pl. a LeLibrarynél: `docker compose up -d --force-recreate ts-lelibrary lelibrary` (a többinél: `ts-stremhu stremhu`, `ts-aiostreams aiostreams`, `ts-tmdb tmdb`, `ts-felirat feliratok`), majd 1 perc várakozás |
 | A Tailscale-konténer nincs bent | `docker compose exec ts-stremhu tailscale status` – ha *Logged out*, futtasd újra a telepítőt, és nyisd meg a kiírt belépő linket |
 | `denied` / `unauthorized` image-letöltéskor | GitHubon: profil → *Packages* → a csomag → *Package settings* → *Change visibility* → **Public** |
 | Nincs magyar találat a Stremióban | 1) a [5.1](#51-stremhu) ellenőrző címe XML-t ad-e; 2) a TMDB-addonban be van-e kapcsolva az IMDb Integration; 3) az AIOStreamsben jó-e a Torznab URL és a kulcs |
