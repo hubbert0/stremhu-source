@@ -206,14 +206,23 @@ class EmbyService:
                 kinds = ["movie", "series"]
             for kind in kinds:
                 item_type = LIBRARY_TYPES[kind]
-                if await client.count(item_type, view_id) == 0:
+                try:
+                    if await client.count(item_type, view_id) == 0:
+                        continue
+                except EmbyError as error:
+                    logger.warning(
+                        "%s: a(z) %s könyvtár nem olvasható: %s",
+                        server.name,
+                        view.get("Name"),
+                        error,
+                    )
                     continue
                 try:
                     genres = await client.genres(view_id, item_type)
                 except EmbyError as error:
-                    # A műfajlista nélkül is legyen sor, csak szűrés nélkül.
+                    # A műfajlista nem létfontosságú: nélküle is megjelenik a sor.
                     logger.warning(
-                        "%s: a(z) %s műfajai nem tölthetők be: %s",
+                        "%s: a(z) %s műfajai nem érhetők el: %s",
                         server.name,
                         view.get("Name"),
                         error,
