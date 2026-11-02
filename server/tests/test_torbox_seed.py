@@ -335,15 +335,17 @@ def test_state_and_alert_roundtrip(tmp_path):
 @pytest.mark.parametrize(
     "state,active,expected",
     [
-        ("uploading (no peers)", False, True),
-        ("Uploading", False, True),
-        ("downloading", False, True),
-        ("stalled (no seeds)", False, True),
+        ("uploading (no peers)", True, True),
+        ("Uploading", True, True),
+        ("downloading", True, True),
+        # A TorBox felülete az elakadt, nem aktív torrentet nem számolja.
+        ("stalled (no seeds)", False, False),
+        ("uploading (no peers)", False, False),
         ("stopped seeding", True, False),
         ("expired", True, False),
         ("paused", True, False),
         ("cached", False, False),
-        ("completed", True, True),  # ismeretlen jelentés: az active jelző dönt
+        ("completed", True, True),
     ],
 )
 def test_torbox_state_variants(state, active, expected):

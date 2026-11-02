@@ -26,14 +26,6 @@ from typing import Any
 # A TorBox állapotszövegei nem mindig egyszavasak (pl. „uploading (no peers)”,
 # „stopped seeding”), ezért előtag alapján, kisbetűsen vizsgáljuk őket.
 INACTIVE_PREFIXES = ("paused", "stopped", "expired")
-ACTIVE_PREFIXES = (
-    "uploading",
-    "seeding",
-    "downloading",
-    "metadl",
-    "checking",
-    "stalled",
-)
 SEEDING_PREFIXES = ("uploading", "seeding")
 
 REASON_FULFILLED = "fulfilled"  # Hit'n'Run teljesítve
@@ -174,10 +166,11 @@ def is_seeding(torrent: TorboxTorrent) -> bool:
 
 
 def occupies_slot(torrent: TorboxTorrent) -> bool:
-    state = normalized_state(torrent)
-    if state.startswith(INACTIVE_PREFIXES):
+    """Helyet foglal-e. A TorBox `active` jelzője dönt (a TorBox felülete is ezt
+    számolja): egy elakadt („stalled”), de nem aktív torrent nem foglal helyet."""
+    if normalized_state(torrent).startswith(INACTIVE_PREFIXES):
         return False
-    return torrent.active or state.startswith(ACTIVE_PREFIXES)
+    return torrent.active
 
 
 def seed_tracker_of(
