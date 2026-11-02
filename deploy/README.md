@@ -319,7 +319,7 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `STREMHU_SESSION_SECRET` | a StremHU belső titka (generált, ne add ki) |
 | `TORBOX_API_KEY` | TorBox-kulcs a helykezeléshez; üresen a helykezelés nem fut |
 | `TORBOX_CLEANUP_DRY_RUN` | `true` = próbaüzem: csak jelent, nem nyúl semmihez |
-| `TORBOX_SLOT_LIMIT`, `TORBOX_MIN_FREE_SLOTS`, `TORBOX_MAX_PAUSE_HOURS`, `TORBOX_MIN_SEED_HOURS` | a helykezelés beállításai ([8. fejezet](#8-torbox-helykezelés)); ha nincsenek a fájlban, az alapérték érvényes |
+| `TORBOX_SLOT_LIMIT`, `TORBOX_MIN_FREE_SLOTS`, `TORBOX_MIN_SEED_HOURS`, `TORBOX_SEED_TRACKERS` | a helykezelés beállításai ([8. fejezet](#8-torbox-helykezelés)); ha nincsenek a fájlban, az alapérték érvényes |
 | `AIOSTREAMS_SECRET_KEY` | az AIOStreams titkosító kulcsa – **első indítás után ne változtasd meg**, különben a mentett beállítások elvesznek |
 | `AIOSTREAMS_AUTH` | AIOStreams-belépés `felhasználó:jelszó` formában |
 | `PULT_USER`, `PULT_PASSWORD` | a Szerverpult és a webes terminál belépése |
@@ -327,13 +327,17 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 
 ## 8. TorBox-helykezelés
 
-A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak. Ha betelt, az új letöltések sorba állnak – vagyis a film nem indul. A helykezelés ezt előzi meg. Ha a `TORBOX_API_KEY` meg van adva, a StremHU **5 percenként**:
+A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak. Ha betelt, az új letöltések sorba állnak – vagyis a film nem indul. A helykezelés ezt előzi meg. Ha a `TORBOX_API_KEY` meg van adva, a StremHU **5 percenként** végignézi a TorBox összes torrentjét:
 
-1. **Szünetelteti** azokat a seedeket, amelyeknek már nincs kötelezettségük: az nCore Hit'n'Run-ja teljesült, vagy nyilvános torrentről van szó. **Nem töröl semmit** – a fájl a TorBoxon marad (újranézhető), és a TorBox a saját lejárati ideje után magától törli.
-2. Ha **kevesebb mint 2 hely szabad**, a legfrissebb, még kötelezett nCore-seedet ideiglenesen szünetelteti (egyszerre legfeljebb annyit, amennyi a 2 szabad helyhez kell; a legfrissebbet, mert annak van a legtöbb ideje a határidőig).
-3. Az ideiglenesen szüneteltetettet visszakapcsolja, amint van hely, de **legkésőbb 6 óra után** mindenképp – a Hit'n'Run elsőbbséget élvez. Visszakapcsolás után 6 óráig nem szünetelteti újra.
+1. **Seedelni csak az nCore-torrenteket kell**, amíg az nCore Hit'n'Run-listáján szerepelnek (és az első 24 órában, mert az nCore késve veszi fel őket). Ezekhez a rendszer **soha nem nyúl**.
+2. **Minden más letöltött torrent seedelését leállítja** (TorBox: *stop seeding*): a nem nCore-ról jötteket (nyilvános torrentek, más trackerek), és az nCore-osakat is, ha a Hit'n'Run teljesült. **Nem töröl semmit** – a fájl a TorBoxon marad, a Stremióban ugyanúgy lejátszható, és a TorBox a saját lejárati ideje után magától törli.
+3. **Szól a telefonra** (ntfy, ugyanaz a téma, mint az állapotfigyelőé), ha egy seedelésre kötelezett nCore-torrent nem seedel (a TorBox leállította, vagy elakadt), vagy ha 2-nél kevesebb a szabad hely. Egy problémáról csak akkor jön értesítés, ha legalább negyedórája fennáll, és utána legfeljebb 12 óránként ismétlődik.
 
-Biztonsági szabályok: ismeretlen privát torrenthez, folyamatban lévő letöltéshez, vagy ha az nCore Hit'n'Run-listája épp nem érhető el, **nem nyúl**. Egy friss torrentet az első 24 órában akkor is kötelezettnek tekint, ha még nem jelent meg az nCore listáján.
+**Melyik torrent nCore-os?** Amit a StremHU adott a TorBoxnak, azt ismeri. A többit az nCore Hit'n'Run-listája alapján azonosítja: a listán lévő torrentek .torrent fájlját letölti, és a hash-ük vagy a nevük alapján megkeresi őket a TorBoxon (ellenőrzésenként legfeljebb 10-et, hogy ne terhelje az nCore-t). Ha a TorBox megadja a torrent trackerét, abból is felismeri.
+
+Biztonsági szabályok: folyamatban lévő letöltéshez **nem nyúl**. Ha az nCore Hit'n'Run-listája épp nem érhető el, vagy még nincs minden eleme azonosítva, az ismeretlen eredetű torrentekhez sem. Egy ismeretlen privát torrentet az első 24 órában nem állít le.
+
+**Fontos TorBox-beállítás:** a TorBox weboldalán a **Settings** oldalon a seedelési beállítás legyen **Always** (alapból *Auto*). *Auto* állásban a TorBox magától is abbahagyhatja a seedelést, akkor is, ha az nCore még várja – erről a rendszer értesítést küld, de újraindítani nem tudja (a TorBox egy leállított torrentet nem tud megbízhatóan újraindítani). Ilyenkor a Hit'n'Run-t a saját gépről, torrentkliensből lehet teljesíteni: az nCore-ról letöltött .torrent fájllal.
 
 ### Állapotjelentés
 
@@ -349,21 +353,23 @@ Példa és magyarázat:
 
 ```
 TorBox – utolsó ellenőrzés: 2 perce
-Szabad hely: 7/10 (cél: legalább 2, ideiglenes szünet max. 6 óra)
+Szabad hely: 4/10 (cél: legalább 2)
+Seedelni csak ezeket kell: ncore (amíg a Hit'n'Run folyamatban)
 
-Állapot    Hit-n-Run    Tracker          Név                    Művelet / megjegyzés
+Állapot    Hit-n-Run    Tracker          Név                                          Művelet / megjegyzés
 seedel     folyamatban  ncore #1234567   Film.2024.1080p…
-szünetel   teljesítve   ncore #7654321   Másik.Film…            Hit'n'Run teljesítve (3 ó 10 p)
+seedel     teljesítve   ncore #7654321   Masik.Film…                                  seed leállítva (Hit'n'Run teljesítve)
+seedel     nincs        -                Public.Movie.2026.1080p…                     seed leállítva (nem kell seedelni)
 ```
 
 | Oszlop | Jelentése |
 |---|---|
 | **Állapot** | `seedel`, `tölt`, `szünetel`, `seed vége`, `lejárt`, `kész`, `elakadt`, `ellenőriz` |
-| **Hit-n-Run** | `folyamatban` = még seedelni kell · `teljesítve` = letudva · `nincs` = nyilvános torrent · `ismeretlen` = nem nCore-ról jött, ezért nem nyúl hozzá |
-| **Tracker** | melyik oldalról és melyik torrent (nCore-azonosító) |
-| **Művelet / megjegyzés** | mit csinált most, vagy miért szünetel: *Hit'n'Run teljesítve*, *nyilvános torrent*, *helyfelszabadítás* (ideiglenes), *pihentetés* (nemrég kapcsolta vissza) |
+| **Hit-n-Run** | `folyamatban` = még seedelni kell · `teljesítve` = letudva · `nincs` = nem nCore-ról jött, nem kell seedelni · `ismeretlen` = még nem dönthető el, ezért nem nyúl hozzá |
+| **Tracker** | melyik oldalról és melyik torrent (nCore-azonosító); `ncore (tracker)` = a TorBox által jelzett trackerből ismerte fel |
+| **Művelet / megjegyzés** | mit csinált most, vagy korábban: *seed leállítva (Hit'n'Run teljesítve)*, *seed leállítva (nem kell seedelni)* |
 
-A ⚠️ sor azt jelzi, hogy egy szüneteltetett torrent a TorBox szerint még mindig helyet foglal. Ha ez tartósan így marad, a TorBox a szüneteltetéssel nem szabadítja fel a helyet – ilyenkor a helykezelés beállításait felül kell vizsgálni.
+A ⚠️ sorok a figyelmeztetések (ezekről értesítés is megy): kötelezett torrent, amely nem seedel vagy elakadt; kevés szabad hely; elérhetetlen Hit'n'Run-lista; vagy hogy a TorBox egy leállított torrentet még mindig aktívnak jelez.
 
 ### Beállítások
 
@@ -372,10 +378,12 @@ A `.env`-be írva (utána `docker compose up -d`):
 | Változó | Alapérték | Jelentés |
 |---|---|---|
 | `TORBOX_SLOT_LIMIT` | 10 | a TorBox-csomag aktív helyei |
-| `TORBOX_MIN_FREE_SLOTS` | 2 | ennyi hely legyen mindig szabad |
-| `TORBOX_MAX_PAUSE_HOURS` | 6 | egy kötelezett seed legfeljebb ennyi órát szünetelhet egyszerre |
-| `TORBOX_MIN_SEED_HOURS` | 24 | ennyi ideig tekint egy friss torrentet kötelezettnek, akkor is, ha még nincs az nCore listáján |
+| `TORBOX_MIN_FREE_SLOTS` | 2 | ennyi hely legyen szabad (ha kevesebb, figyelmeztetés jön) |
+| `TORBOX_MIN_SEED_HOURS` | 24 | ennyi ideig tekint egy friss nCore-torrentet kötelezettnek, akkor is, ha még nincs az nCore listáján; ennyi ideig nem állít le egy ismeretlen privát torrentet |
+| `TORBOX_SEED_TRACKERS` | ncore | a seedköteles trackerek (vesszővel elválasztva) |
 | `TORBOX_CLEANUP_DRY_RUN` | false | `true` = próbaüzem, csak jelent |
+
+Az értesítések az `NTFY_TOPIC` témára mennek; ha az üres, nem megy értesítés (a jelentésben a figyelmeztetések akkor is látszanak).
 
 ## 9. Szerverpult (a szerveren)
 
@@ -686,6 +694,6 @@ git push origin torbox
 | `deploy/compose.yaml` | az összes konténer leírása |
 | `deploy/install.sh` | telepítő / frissítő |
 | `deploy/tailscale/*.json` | a Tailscale Serve/Funnel beállításai (a `pult.json`-ban szándékosan nincs Funnel) |
-| `server/app/modules/torbox_seed/` | TorBox-helykezelés: `logic.py` (döntések), `background_tasks.py` (5 perces futás), `report.py` (jelentés) |
+| `server/app/modules/torbox_seed/` | TorBox-helykezelés: `logic.py` (döntések), `background_tasks.py` (5 perces futás, nCore-azonosítás), `alerts.py` (értesítések), `report.py` (jelentés) |
 | `deploy/pult/` | szerveres pult (FastAPI + ttyd) |
 | `deploy/helyi-pult/` | Windowsos pult (FastAPI + asyncssh + xterm.js, PyInstaller) |

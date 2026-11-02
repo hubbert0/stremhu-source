@@ -74,8 +74,12 @@ class TorboxClient:
             )
         self._unwrap(response)
 
-    async def pause_torrent(self, torrent_id: int) -> None:
-        await self._control(torrent_id, "pause")
+    async def stop_seeding(self, torrent_id: int) -> None:
+        """Leállítja a seedelést. A fájl a TorBoxon marad, és lejátszható.
+
+        (A TorBox már nem ismeri a „pause” műveletet; az elfogadottak:
+        reannounce, delete, resume, stop_seeding.)"""
+        await self._control(torrent_id, "stop_seeding")
 
     async def resume_torrent(self, torrent_id: int) -> None:
         await self._control(torrent_id, "resume")

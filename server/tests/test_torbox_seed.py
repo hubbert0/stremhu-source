@@ -5,16 +5,29 @@ import json
 import httpx
 import pytest
 
+from app.modules.torbox_seed.alerts import (
+    AlertRecord,
+    due_alerts,
+    mark_sent,
+    notification_text,
+    send_ntfy,
+)
+from app.modules.torbox_seed.background_tasks import _match_refs
 from app.modules.torbox_seed.client import TorboxApiError, TorboxClient
+from app.modules.torbox_seed.config import TorboxSeedSettings
 from app.modules.torbox_seed.logic import (
+    ALERT_HNR_UNAVAILABLE,
+    ALERT_NOT_SEEDING,
+    ALERT_SLOTS,
+    ALERT_STALLED,
     HNR_DONE,
     HNR_NONE,
     HNR_PENDING,
     HNR_UNKNOWN,
-    REASON_COOLDOWN,
     REASON_FULFILLED,
-    REASON_PUBLIC,
-    REASON_SLOT,
+    REASON_NOT_REQUIRED,
+    Alert,
+    HnrList,
     PlannerSettings,
     StateEntry,
     TorboxTorrent,
@@ -26,15 +39,20 @@ from app.modules.torbox_seed.logic import (
     prune_state,
 )
 from app.modules.torbox_seed.report import build_status, format_status, state_label
-from app.modules.torbox_seed.storage import load_state, save_state
+from app.modules.torbox_seed.storage import (
+    load_alert_records,
+    load_state,
+    save_alert_records,
+    save_state,
+)
 
-NOW = datetime.datetime(2026, 11, 1, 12, 0, tzinfo=datetime.timezone.utc)
+NOW = datetime.datetime(2026, 11, 2, 12, 0, tzinfo=datetime.timezone.utc)
 
 SETTINGS = PlannerSettings(
     slot_limit=10,
     min_free_slots=2,
-    max_pause=datetime.timedelta(hours=6),
     min_seed=datetime.timedelta(hours=24),
+    seed_trackers=("ncore",),
 )
 
 
@@ -50,209 +68,268 @@ def torrent(
     active: bool = True,
     private: bool = True,
     age_hours: float = 48,
+    tracker: str = "",
+    name: str | None = None,
 ) -> TorboxTorrent:
     return TorboxTorrent(
         id=n,
         hash=h(n),
-        name=f"film-{n}",
+        name=name or f"film-{n}",
         private=private,
         active=active,
         download_finished=finished,
         download_state=state,
         created_at=NOW - datetime.timedelta(hours=age_hours),
+        tracker=tracker,
     )
 
 
-def ncore_refs(*ids: int) -> dict[str, TrackerTorrentRef]:
-    return {h(n): TrackerTorrentRef(indexer_id="ncore", torrent_id=str(n)) for n in ids}
+def refs(*ids: int, indexer: str = "ncore") -> dict[str, TrackerTorrentRef]:
+    return {h(n): TrackerTorrentRef(indexer_id=indexer, torrent_id=str(n)) for n in ids}
 
 
-def plan(torrents, refs=None, pending=(), state=None, hnr_available=True):
-    not_completed = {"ncore": {str(n) for n in pending}} if hnr_available else {}
+def plan(torrents, refs_by_hash=None, pending=(), state=None, hnr="ok"):
+    if hnr == "ok":
+        lists = {"ncore": HnrList(frozenset(str(n) for n in pending), complete=True)}
+    elif hnr == "incomplete":
+        lists = {"ncore": HnrList(frozenset(str(n) for n in pending), complete=False)}
+    else:
+        lists = {}
     return plan_actions(
         torrents=torrents,
-        refs_by_hash=refs or {},
-        not_completed_by_indexer=not_completed,
+        refs_by_hash=refs_by_hash or {},
+        hnr_lists=lists,
         state=state or {},
         now=NOW,
         settings=SETTINGS,
     )
 
 
-def paused_ids(p, reason=None):
-    return sorted(t.id for t, r in p.pause if reason is None or r == reason)
+def stopped(p, reason=None):
+    return sorted(t.id for t, r in p.stop if reason is None or r == reason)
 
 
-# --- Seedkötelezettség nélküliek -------------------------------------------
+def alert_kinds(p):
+    return sorted(a.kind for a in p.alerts)
 
 
-def test_fulfilled_seed_is_paused_not_deleted():
-    p = plan([torrent(1)], refs=ncore_refs(1))
-    assert paused_ids(p, REASON_FULFILLED) == [1]
+# --- Mit kell seedelni, mit nem ---------------------------------------------
+
+
+def test_fulfilled_ncore_seed_is_stopped():
+    p = plan([torrent(1)], refs(1))
+    assert stopped(p, REASON_FULFILLED) == [1]
     assert p.statuses[0].hnr == HNR_DONE
 
 
-def test_public_seed_is_paused():
-    p = plan([torrent(1, private=False)])
-    assert paused_ids(p, REASON_PUBLIC) == [1]
-    assert p.statuses[0].hnr == HNR_NONE
-
-
-def test_pending_seed_with_enough_room_is_kept():
-    p = plan([torrent(1)], refs=ncore_refs(1), pending=[1])
-    assert p.pause == []
+def test_pending_ncore_seed_is_kept():
+    p = plan([torrent(1)], refs(1), pending=[1])
+    assert p.stop == []
+    assert p.statuses[0].hnr == HNR_PENDING
     assert p.free_after == 9
 
 
-def test_young_torrent_counts_as_pending():
-    p = plan([torrent(1, age_hours=3)], refs=ncore_refs(1))
+def test_young_ncore_torrent_counts_as_pending():
+    p = plan([torrent(1, age_hours=3)], refs(1))
     assert p.statuses[0].hnr == HNR_PENDING
-    assert p.pause == []
+    assert p.stop == []
 
 
-def test_unknown_private_torrent_is_never_touched():
-    torrents = [torrent(n) for n in range(1, 11)]
-    p = plan(torrents)  # nincs ref, privát
-    assert all(s.hnr == HNR_UNKNOWN for s in p.statuses)
-    assert p.pause == []
+def test_other_tracker_known_to_stremhu_is_not_seeded():
+    p = plan([torrent(1)], refs(1, indexer="iptorrents"))
+    assert p.statuses[0].hnr == HNR_NONE
+    assert stopped(p, REASON_NOT_REQUIRED) == [1]
 
 
-def test_unavailable_hnr_list_means_no_action():
-    torrents = [torrent(n) for n in range(1, 11)]
-    p = plan(torrents, refs=ncore_refs(*range(1, 11)), hnr_available=False)
-    assert p.pause == []
+def test_public_unknown_torrent_is_stopped():
+    p = plan([torrent(1, private=False)])
+    assert p.statuses[0].hnr == HNR_NONE
+    assert stopped(p, REASON_NOT_REQUIRED) == [1]
 
 
-def test_downloading_torrent_is_never_paused():
-    torrents = [torrent(n, state="downloading", finished=False) for n in range(1, 11)]
-    p = plan(torrents, refs=ncore_refs(*range(1, 11)), pending=range(1, 11))
-    assert p.pause == []
+def test_old_private_unknown_torrent_is_stopped():
+    p = plan([torrent(1, private=True, age_hours=48)])
+    assert stopped(p, REASON_NOT_REQUIRED) == [1]
 
 
-# --- Legalább 2 szabad hely -------------------------------------------------
+def test_young_private_unknown_torrent_is_left_alone():
+    p = plan([torrent(1, private=True, age_hours=3)])
+    assert p.statuses[0].hnr == HNR_UNKNOWN
+    assert p.stop == []
 
 
-def test_full_slots_pause_two_newest_pending():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 11)]
-    p = plan(torrents, refs=ncore_refs(*range(1, 11)), pending=range(1, 11))
-    # a legfrissebbek (legkisebb kor): 10 és 9
-    assert paused_ids(p, REASON_SLOT) == [9, 10]
-    assert p.free_after == 2
+def test_unknown_torrents_untouched_while_hnr_list_incomplete():
+    p = plan([torrent(1, private=False)], hnr="incomplete")
+    assert p.statuses[0].hnr == HNR_UNKNOWN
+    assert p.stop == []
 
 
-def test_nine_occupied_pauses_one():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 10)]
-    p = plan(torrents, refs=ncore_refs(*range(1, 10)), pending=range(1, 10))
-    assert paused_ids(p, REASON_SLOT) == [9]
-    assert p.free_after == 2
+def test_unavailable_hnr_list_means_no_action_and_alert():
+    torrents = [torrent(1), torrent(2, private=False)]
+    p = plan(torrents, refs(1), hnr="missing")
+    assert p.stop == []
+    assert [s.hnr for s in p.statuses] == [HNR_UNKNOWN, HNR_UNKNOWN]
+    assert ALERT_HNR_UNAVAILABLE in alert_kinds(p)
 
 
-def test_fulfilled_pauses_reduce_need_for_slot_pauses():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 11)]
-    # 1 és 2 teljesítve, a többi folyamatban
-    p = plan(torrents, refs=ncore_refs(*range(1, 11)), pending=range(3, 11))
-    assert paused_ids(p, REASON_FULFILLED) == [1, 2]
-    assert paused_ids(p, REASON_SLOT) == []
-    assert p.free_after == 2
+def test_tracker_field_identifies_ncore_without_ref():
+    young = torrent(1, private=False, age_hours=2, tracker="https://t.ncore.sh/x")
+    old = torrent(2, private=False, age_hours=48, tracker="https://t.ncore.sh/x")
+    p = plan([young, old])
+    assert [s.seed_tracker for s in p.statuses] == ["ncore", "ncore"]
+    assert p.statuses[0].hnr == HNR_PENDING
+    assert p.statuses[1].hnr == HNR_DONE
+    assert stopped(p, REASON_FULFILLED) == [2]
 
 
-def test_slot_pauses_are_capped():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 11)]
-    torrents.append(torrent(11, state="paused", active=False))
-    torrents.append(torrent(12, state="paused", active=False))
-    state = {
-        11: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=1)),
-        12: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=1)),
-    }
+def test_tracker_field_match_untouched_while_list_incomplete():
+    p = plan([torrent(1, tracker="ncore")], hnr="incomplete")
+    assert p.statuses[0].hnr == HNR_UNKNOWN
+    assert p.stop == []
+
+
+def test_downloading_torrent_is_never_stopped():
+    torrents = [torrent(n, state="downloading", finished=False) for n in range(1, 4)]
+    p = plan(torrents, refs(1, 2, 3))
+    assert p.stop == []
+
+
+def test_already_stopped_torrent_is_left_alone():
+    p = plan([torrent(1, state="cached", active=False)], refs(1))
+    assert p.stop == []
+
+
+# --- A tegnapi helyzet: 9 aktív, legalább 2 hely kell -----------------------
+
+
+def test_nine_active_frees_slots_without_touching_pending():
+    pending_ids = [1, 2, 3, 4, 5, 6]
+    torrents = [torrent(n) for n in pending_ids]
+    torrents.append(torrent(7))  # Boxi: nCore, teljesítve
+    torrents.append(torrent(8, private=False))  # nyilvános
+    torrents.append(torrent(9, private=False))  # nyilvános
+    p = plan(torrents, refs(*pending_ids, 7), pending=pending_ids)
+    assert stopped(p) == [7, 8, 9]
+    assert p.occupied_before == 9
+    assert p.free_after == 4
+    assert ALERT_SLOTS not in alert_kinds(p)
+
+
+def test_full_slots_with_only_pending_seeds_alerts_but_keeps_seeding():
+    torrents = [torrent(n) for n in range(1, 10)]
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10))
+    assert p.stop == []
+    assert p.free_after == 1
+    assert alert_kinds(p) == [ALERT_SLOTS]
+    assert "9 seedkötelezett torrent seedel" in p.alerts[0].message
+
+
+# --- Figyelmeztetések --------------------------------------------------------
+
+
+def test_pending_torrent_not_seeding_raises_alert():
+    p = plan([torrent(1, state="cached", active=False)], refs(1), pending=[1])
+    assert alert_kinds(p) == [ALERT_NOT_SEEDING]
+    assert "ncore #1" in p.alerts[0].message
+
+
+def test_pending_stalled_torrent_raises_alert():
     p = plan(
-        torrents, refs=ncore_refs(*range(1, 13)), pending=range(1, 13), state=state
+        [torrent(1, state="stalled (no seeds)", finished=False)], refs(1), pending=[1]
     )
-    # már 2 ideiglenesen szünetel, többet nem szüneteltet
-    assert paused_ids(p, REASON_SLOT) == []
+    assert alert_kinds(p) == [ALERT_STALLED]
 
 
-def test_cooldown_torrent_is_not_paused_again():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 11)]
-    state = {10: StateEntry(REASON_COOLDOWN, NOW - datetime.timedelta(hours=1))}
-    p = plan(
-        torrents, refs=ncore_refs(*range(1, 11)), pending=range(1, 11), state=state
+def test_pending_download_in_progress_is_not_alerted():
+    p = plan([torrent(1, state="downloading", finished=False)], refs(1), pending=[1])
+    assert p.alerts == []
+
+
+def test_alert_needs_to_persist_and_repeats_later():
+    alert = Alert(key="not_seeding:1", kind=ALERT_NOT_SEEDING, message="x")
+    repeat = datetime.timedelta(hours=12)
+
+    due, records = due_alerts([alert], {}, NOW, repeat)
+    assert due == []  # első észlelés: még nem szól
+
+    later = NOW + datetime.timedelta(minutes=20)
+    due, records = due_alerts([alert], records, later, repeat)
+    assert due == [alert]
+    records = mark_sent(records, due, later)
+
+    due, records = due_alerts(
+        [alert], records, later + datetime.timedelta(hours=1), repeat
     )
-    assert 10 not in paused_ids(p)
-    assert paused_ids(p, REASON_SLOT) == [8, 9]
+    assert due == []  # nemrég ment értesítés
+
+    due, _ = due_alerts([alert], records, later + datetime.timedelta(hours=13), repeat)
+    assert due == [alert]
 
 
-# --- Visszakapcsolás --------------------------------------------------------
+def test_resolved_alert_is_forgotten():
+    records = {"slots": AlertRecord(first_seen=NOW)}
+    due, updated = due_alerts([], records, NOW, datetime.timedelta(hours=12))
+    assert due == [] and updated == {}
 
 
-def test_slot_paused_is_resumed_when_room():
-    torrents = [torrent(1), torrent(2, state="paused", active=False)]
-    state = {2: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=1))}
-    p = plan(torrents, refs=ncore_refs(1, 2), pending=[1, 2], state=state)
-    assert [(t.id, why) for t, why in p.resume] == [(2, "van szabad hely")]
-
-
-def test_slot_paused_waits_when_no_room():
-    torrents = [torrent(n) for n in range(1, 9)]  # 8 foglalt → 2 szabad
-    torrents.append(torrent(9, state="paused", active=False))
-    state = {9: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=1))}
-    p = plan(
-        torrents, refs=ncore_refs(*range(1, 10)), pending=range(1, 10), state=state
-    )
-    assert p.resume == []
-
-
-def test_slot_paused_is_force_resumed_after_max_pause():
-    torrents = [torrent(n) for n in range(1, 9)]
-    torrents.append(torrent(9, state="paused", active=False))
-    state = {9: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=7))}
-    p = plan(
-        torrents, refs=ncore_refs(*range(1, 10)), pending=range(1, 10), state=state
-    )
-    assert [(t.id, why) for t, why in p.resume] == [(9, "időkorlát")]
-
-
-def test_slot_paused_that_got_fulfilled_stays_paused():
-    torrents = [torrent(1, state="paused", active=False)]
-    state = {1: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=7))}
-    p = plan(torrents, refs=ncore_refs(1), pending=[], state=state)
-    assert p.resume == []
-    assert p.reclassify == {1: REASON_FULFILLED}
-
-
-def test_fulfilled_paused_is_never_resumed():
-    torrents = [torrent(1, state="paused", active=False)]
-    state = {1: StateEntry(REASON_FULFILLED, NOW - datetime.timedelta(days=3))}
-    p = plan(torrents, refs=ncore_refs(1), state=state)
-    assert p.resume == []
-
-
-# --- Állapot karbantartása --------------------------------------------------
-
-
-def test_prune_state():
-    torrents = [
-        torrent(1, state="paused", active=False),
-        torrent(2),  # valaki kézzel visszakapcsolta
-        torrent(3),
-        torrent(4),
+def test_notification_text_and_send():
+    alerts = [
+        Alert(key="a", kind=ALERT_SLOTS, message="kevés a hely"),
+        Alert(key="b", kind=ALERT_NOT_SEEDING, message="nem seedel"),
     ]
+    title, message = notification_text(alerts)
+    assert title == "TorBox-seed: 2 figyelmeztetés"
+    assert "• kevés a hely" in message and "• nem seedel" in message
+
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={})
+
+    ok = asyncio.run(
+        send_ntfy("https://ntfy.test", "tema", alerts, httpx.MockTransport(handler))
+    )
+    assert ok
+    assert seen["body"]["topic"] == "tema"
+    assert seen["body"]["title"] == title
+
+    def failing(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(500)
+
+    assert not asyncio.run(
+        send_ntfy("https://ntfy.test", "tema", alerts, httpx.MockTransport(failing))
+    )
+
+
+# --- Állapot és jelentés ------------------------------------------------------
+
+
+def test_prune_state_drops_missing_and_legacy_entries():
+    torrents = [torrent(1), torrent(2), torrent(3)]
     state = {
-        1: StateEntry(REASON_SLOT, NOW),
-        2: StateEntry(REASON_SLOT, NOW),
-        3: StateEntry(REASON_COOLDOWN, NOW - datetime.timedelta(hours=1)),
-        4: StateEntry(REASON_COOLDOWN, NOW - datetime.timedelta(hours=7)),
+        1: StateEntry(REASON_FULFILLED, NOW),
+        2: StateEntry("slot", NOW),  # régi változat ideiglenes szünete
+        3: StateEntry(REASON_NOT_REQUIRED, NOW),
         99: StateEntry(REASON_FULFILLED, NOW),  # eltűnt a TorBoxról
     }
-    pruned = prune_state(state, torrents, NOW, SETTINGS.max_pause)
-    assert sorted(pruned) == [1, 3]
+    assert sorted(prune_state(state, torrents)) == [1, 3]
 
 
-def test_state_roundtrip(tmp_path):
+def test_state_and_alert_roundtrip(tmp_path):
     path = tmp_path / "state.json"
-    state = {7: StateEntry(REASON_SLOT, NOW)}
+    state = {7: StateEntry(REASON_FULFILLED, NOW)}
     save_state(path, state)
     assert load_state(path) == state
     assert load_state(tmp_path / "nincs.json") == {}
+
+    alerts_path = tmp_path / "alerts.json"
+    records = {
+        "a": AlertRecord(first_seen=NOW),
+        "b": AlertRecord(first_seen=NOW, last_sent=NOW),
+    }
+    save_alert_records(alerts_path, records)
+    assert load_alert_records(alerts_path) == records
 
 
 @pytest.mark.parametrize(
@@ -261,6 +338,7 @@ def test_state_roundtrip(tmp_path):
         ("uploading (no peers)", False, True),
         ("Uploading", False, True),
         ("downloading", False, True),
+        ("stalled (no seeds)", False, True),
         ("stopped seeding", True, False),
         ("expired", True, False),
         ("paused", True, False),
@@ -272,19 +350,6 @@ def test_torbox_state_variants(state, active, expected):
     assert occupies_slot(torrent(1, state=state, active=active)) is expected
 
 
-def test_prune_keeps_slot_entry_when_torbox_reports_stopped():
-    torrents = [torrent(1, state="stopped seeding", active=False)]
-    state = {1: StateEntry(REASON_SLOT, NOW)}
-    assert prune_state(state, torrents, NOW, SETTINGS.max_pause) == state
-
-
-def test_slot_paused_reported_as_stopped_is_still_resumed():
-    torrents = [torrent(1, state="stopped seeding", active=False)]
-    state = {1: StateEntry(REASON_SLOT, NOW - datetime.timedelta(hours=7))}
-    p = plan(torrents, refs=ncore_refs(1), pending=[1], state=state)
-    assert [(t.id, why) for t, why in p.resume] == [(1, "időkorlát")]
-
-
 def test_state_labels():
     assert state_label("uploading (no peers)") == "seedel"
     assert state_label("stopped seeding") == "seed vége"
@@ -292,32 +357,71 @@ def test_state_labels():
     assert state_label("valami új") == "valami új"
 
 
-def test_report_hides_rows_not_occupying_slots():
-    torrents = [torrent(1), torrent(2, state="expired", active=False)]
-    p = plan(torrents, refs=ncore_refs(1, 2), pending=[1, 2])
-    status = build_status(p, {}, SETTINGS, NOW, dry_run=False, warnings=[])
+def test_report_shows_relevant_rows_and_warnings():
+    torrents = [
+        torrent(1),  # seedel, folyamatban
+        torrent(2),  # teljesítve → leállítjuk
+        torrent(3, state="cached", active=False),  # folyamatban, de nem seedel
+        torrent(4, state="expired", active=False, private=False),
+    ]
+    p = plan(torrents, refs(1, 2, 3), pending=[1, 3])
+    status = build_status(
+        p, {}, SETTINGS, NOW, dry_run=False, warnings=[a.message for a in p.alerts]
+    )
 
     short = format_status(status, NOW)
+    assert "Szabad hely: 9/10 (cél: legalább 2)" in short
+    assert "Seedelni csak ezeket kell: ncore" in short
     assert "film-1" in short
-    assert "film-2" not in short
+    assert "seed leállítva (Hit'n'Run teljesítve)" in short
+    assert "film-3" in short  # seedelni kellene → mindig látszik
+    assert "film-4" not in short
     assert "További 1 torrent" in short
+    assert "⚠️  Seedelni kellene, de a TorBox nem seedeli" in short
 
     full = format_status(status, NOW, show_all=True)
-    assert "film-2" in full
+    assert "film-4" in full
 
 
-def test_status_report_renders():
-    torrents = [torrent(n, age_hours=100 - n) for n in range(1, 11)]
-    p = plan(torrents, refs=ncore_refs(*range(1, 11)), pending=range(1, 11))
-    status = build_status(p, {}, SETTINGS, NOW, dry_run=False, warnings=[])
+def test_report_marks_dry_run_and_tracker_field_matches():
+    p = plan([torrent(1, private=False, tracker="ncore")])
+    status = build_status(p, {}, SETTINGS, NOW, dry_run=True, warnings=[])
     text = format_status(status, NOW)
-    assert "Szabad hely: 2/10" in text
-    assert "helyfelszabadítás" in text
-    assert "film-10" in text
+    assert "(PRÓBAÜZEM)" in text
+    assert "leállítanám (Hit'n'Run teljesítve)" in text
+    assert "ncore (tracker)" in text
     assert "Még nincs állapotjelentés" in format_status(None, NOW)
 
 
-# --- Segédfüggvények és kliens ----------------------------------------------
+def test_report_shows_earlier_stop_as_note():
+    torrents = [torrent(1, state="cached", active=False)]
+    state = {1: StateEntry(REASON_NOT_REQUIRED, NOW - datetime.timedelta(hours=2))}
+    p = plan(torrents, state=state)
+    status = build_status(p, state, SETTINGS, NOW, dry_run=False, warnings=[])
+    assert "seed leállítva (nem kell seedelni, 2 ó 0 p)" in format_status(
+        status, NOW, show_all=True
+    )
+
+
+# --- Azonosítás a Hit'n'Run-lista alapján ------------------------------------
+
+
+def test_match_refs_by_hash_then_by_name():
+    torrents = [
+        torrent(1),
+        torrent(2, name="The.Breadwinner.2026.720p.HUN"),
+        torrent(3),
+    ]
+    known = refs(3)
+    by_hash = {h(1): TrackerTorrentRef("ncore", "101")}
+    by_name = {"the.breadwinner.2026.720p.hun": TrackerTorrentRef("ncore", "102")}
+    _match_refs(torrents, known, (by_hash, by_name))
+    assert known[h(1)].torrent_id == "101"
+    assert known[h(2)].torrent_id == "102"
+    assert known[h(3)].torrent_id == "3"  # a meglévőt nem írja felül
+
+
+# --- Segédfüggvények, beállítások, kliens -----------------------------------
 
 
 def test_parse_datetime_formats():
@@ -341,9 +445,20 @@ def test_parse_torbox_torrent():
             "download_finished": True,
             "download_state": "uploading",
             "created_at": "2026-10-30T10:00:00Z",
+            "tracker": "https://T.NCORE.SH:2810/announce",
         }
     )
     assert t.id == 42 and t.hash == h(1) and t.created_at is not None
+    assert "ncore" in t.tracker
+
+    listed = parse_torbox_torrent({"id": 1, "trackers": ["udp://a", "http://ncore.x"]})
+    assert "ncore" in listed.tracker
+    assert parse_torbox_torrent({"id": 2}).tracker == ""
+
+
+def test_seed_tracker_list_parsing():
+    settings = TorboxSeedSettings(seed_trackers=" nCore, ,ncore,foo ")
+    assert settings.seed_tracker_list == ("ncore", "foo")
 
 
 def _client(handler) -> TorboxClient:
@@ -379,7 +494,8 @@ def test_client_empty_list_on_404():
 
 
 @pytest.mark.parametrize(
-    "method,operation", [("pause_torrent", "pause"), ("resume_torrent", "resume")]
+    "method,operation",
+    [("stop_seeding", "stop_seeding"), ("resume_torrent", "resume")],
 )
 def test_client_control_operations(method, operation):
     seen = {}
@@ -400,3 +516,71 @@ def test_client_raises_on_api_error():
 
     with pytest.raises(TorboxApiError):
         asyncio.run(_client(handler).list_torrents())
+
+
+# --- A Hit'n'Run-lista elemeinek azonosítása (letöltéssel) -------------------
+
+
+class _FakeInfo:
+    def __init__(self, name: str):
+        self.name = name
+
+
+class _FakeTorrentFile:
+    def __init__(self, n: int, name: str):
+        self.info_hash = h(n)
+        self.info = _FakeInfo(name)
+
+
+class _FakeSource:
+    def __init__(self, n: int, name: str):
+        self.torrent_file = _FakeTorrentFile(n, name)
+
+
+def test_resolve_hnr_ids_downloads_missing_with_limit(monkeypatch):
+    import contextlib
+
+    from fastapi import HTTPException
+
+    from app.modules.torbox_seed import background_tasks as bt
+
+    calls: list[str] = []
+
+    class FakeProvider:
+        async def find_one_by_indexer(self, indexer_id: str, torrent_id: str):
+            calls.append(torrent_id)
+            if torrent_id == "404":
+                raise HTTPException(status_code=404)
+            if torrent_id == "500":
+                raise RuntimeError("nCore nem válaszol")
+            return _FakeSource(int(torrent_id), f"Film.{torrent_id}")
+
+    known_maps = ({h(1): TrackerTorrentRef("ncore", "1")}, {})
+    monkeypatch.setattr(
+        bt,
+        "_lookup_known",
+        lambda _indexer, _ids: (known_maps, ["2", "404", "500", "7"]),
+    )
+    monkeypatch.setattr(bt, "db_session", contextlib.nullcontext)
+    monkeypatch.setattr(
+        bt, "create_torrent_source_provider_service", lambda _db: FakeProvider()
+    )
+    bt._absent_ids.clear()
+
+    maps, unresolved = asyncio.run(
+        bt._resolve_hnr_ids("ncore", {"1", "2", "404", "500", "7"}, 3, NOW)
+    )
+    by_hash, by_name = maps
+    assert calls == ["2", "404", "500"]  # a limit miatt a „7” a következő körre marad
+    assert by_hash[h(2)].torrent_id == "2"
+    assert by_name["film.2"].torrent_id == "2"
+    assert unresolved == 2  # „500” (átmeneti hiba) + „7” (limit)
+    assert ("ncore", "404") in bt._absent_ids
+
+    calls.clear()
+    _, unresolved = asyncio.run(
+        bt._resolve_hnr_ids("ncore", {"1", "2", "404", "500", "7"}, 10, NOW)
+    )
+    assert "404" not in calls  # a törölt torrentet egy napig nem kérdezi újra
+    assert unresolved == 1
+    bt._absent_ids.clear()

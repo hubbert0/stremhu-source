@@ -4,10 +4,9 @@ import datetime
 from typing import Any
 
 from app.modules.torbox_seed.logic import (
-    REASON_COOLDOWN,
+    HNR_PENDING,
     REASON_FULFILLED,
-    REASON_PUBLIC,
-    REASON_SLOT,
+    REASON_NOT_REQUIRED,
     Plan,
     PlannerSettings,
     StateEntry,
@@ -16,9 +15,11 @@ from app.modules.torbox_seed.logic import (
 
 REASON_LABELS = {
     REASON_FULFILLED: "Hit'n'Run teljesítve",
-    REASON_PUBLIC: "nyilvános torrent",
-    REASON_SLOT: "helyfelszabadítás",
-    REASON_COOLDOWN: "pihentetés",
+    REASON_NOT_REQUIRED: "nem kell seedelni",
+    # Régebbi változat bejegyzései (olvasáshoz):
+    "public": "nem kell seedelni",
+    "slot": "helyfelszabadítás",
+    "cooldown": "pihentetés",
 }
 
 # Előtag → magyar felirat (a TorBox állapotszövegei nem mindig egyszavasak).
@@ -53,29 +54,28 @@ def build_status(
     dry_run: bool,
     warnings: list[str],
 ) -> dict[str, Any]:
-    pause_reasons = {torrent.id: reason for torrent, reason in plan.pause}
-    resume_reasons = {torrent.id: why for torrent, why in plan.resume}
+    stop_reasons = {torrent.id: reason for torrent, reason in plan.stop}
 
     rows: list[dict[str, Any]] = []
     for status in plan.statuses:
         torrent = status.torrent
         action = ""
-        if torrent.id in pause_reasons:
-            action = f"szüneteltetve ({REASON_LABELS[pause_reasons[torrent.id]]})"
-        elif torrent.id in resume_reasons:
-            action = f"visszakapcsolva ({resume_reasons[torrent.id]})"
-        elif torrent.id in plan.reclassify:
-            action = "marad szüneteltetve (Hit'n'Run teljesítve)"
+        if torrent.id in stop_reasons:
+            verb = "leállítanám" if dry_run else "seed leállítva"
+            action = f"{verb} ({REASON_LABELS[stop_reasons[torrent.id]]})"
+
+        if status.ref is not None:
+            tracker = f"{status.ref.indexer_id} #{status.ref.torrent_id}"
+        elif status.seed_tracker is not None:
+            tracker = f"{status.seed_tracker} (tracker)"
+        else:
+            tracker = None
 
         entry = state.get(torrent.id)
         rows.append(
             {
                 "name": torrent.name,
-                "tracker": (
-                    f"{status.ref.indexer_id} #{status.ref.torrent_id}"
-                    if status.ref
-                    else None
-                ),
+                "tracker": tracker,
                 "hnr": status.hnr,
                 "state": torrent.download_state,
                 "occupies": status.occupies_slot,
@@ -90,7 +90,7 @@ def build_status(
         "dry_run": dry_run,
         "slot_limit": settings.slot_limit,
         "min_free_slots": settings.min_free_slots,
-        "max_pause_hours": settings.max_pause.total_seconds() / 3600,
+        "seed_trackers": list(settings.seed_trackers),
         "occupied_before": plan.occupied_before,
         "free_after": plan.free_after,
         "rows": rows,
@@ -113,8 +113,10 @@ def _cut(text: str, width: int) -> str:
 
 
 def _is_relevant(row: dict[str, Any]) -> bool:
-    """Ami helyet foglal, amivel most történt valami, vagy amit mi kezelünk."""
-    return bool(row.get("occupies") or row.get("action") or row.get("entry_reason"))
+    """Ami helyet foglal, amivel most történt valami, vagy amit seedelni kell."""
+    return bool(
+        row.get("occupies") or row.get("action") or row.get("hnr") == HNR_PENDING
+    )
 
 
 def format_status(
@@ -124,7 +126,7 @@ def format_status(
 ) -> str:
     if not status:
         return (
-            "Még nincs állapotjelentés. A TorBox-helykezelés pár percen belül "
+            "Még nincs állapotjelentés. A TorBox-seedkezelés pár percen belül "
             "lefut (ha a TORBOX_API_KEY be van állítva)."
         )
 
@@ -132,13 +134,15 @@ def format_status(
     rows: list[dict[str, Any]] = status.get("rows", [])
     shown = rows if show_all else [row for row in rows if _is_relevant(row)]
     hidden = len(rows) - len(shown)
+    seed_trackers = ", ".join(status.get("seed_trackers") or []) or "-"
 
     lines = [
         f"TorBox – utolsó ellenőrzés: {_ago(updated_at, now)}"
         + (" (PRÓBAÜZEM)" if status.get("dry_run") else ""),
-        f"Szabad hely: {status.get('free_after', 0)}/{status.get('slot_limit', 0)} "
-        f"(cél: legalább {status.get('min_free_slots')}, "
-        f"ideiglenes szünet max. {status.get('max_pause_hours'):g} óra)",
+        f"Szabad hely: {max(status.get('free_after', 0), 0)}/"
+        f"{status.get('slot_limit', 0)} "
+        f"(cél: legalább {status.get('min_free_slots')})",
+        f"Seedelni csak ezeket kell: {seed_trackers} (amíg a Hit'n'Run folyamatban)",
         "",
     ]
 
@@ -151,7 +155,10 @@ def format_status(
             note = row.get("action") or ""
             if not note and row.get("entry_reason"):
                 label = REASON_LABELS.get(row["entry_reason"], row["entry_reason"])
-                note = f"{label} ({_ago(parse_datetime(row.get('entry_at')), now)})"
+                note = (
+                    f"seed leállítva ({label}, "
+                    f"{_ago(parse_datetime(row.get('entry_at')), now)})"
+                )
             lines.append(
                 f"{_cut(state_label(str(row.get('state') or '')), 10):<10} "
                 f"{_cut(str(row.get('hnr') or ''), 12):<12} "
@@ -168,7 +175,10 @@ def format_status(
             "Mind: a parancs végére írd: --all"
         )
 
-    for warning in status.get("warnings", []):
+    warnings = status.get("warnings") or []
+    if warnings:
+        lines.append("")
+    for warning in warnings:
         lines.append(f"⚠️  {warning}")
 
     return "\n".join(lines)

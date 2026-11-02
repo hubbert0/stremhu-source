@@ -59,16 +59,18 @@ services:
       - REVERSE_PROXY_DOMAIN=${STREMHU_HOSTNAME}.${TAILNET:?Add meg a .env-ben}
       # Kötelező egyedi titok! Az alapértelmezett nyilvánosan ismert.
       - SESSION_SECRET=${STREMHU_SESSION_SECRET:?Futtasd az init-env.sh-t}
-      # TorBox-helykezelés: szünetelteti a seedkötelezettség nélküli
-      # torrenteket, és mindig legalább TORBOX_MIN_FREE_SLOTS helyet szabadon
-      # tart. Üres kulccsal nem fut. Állapot:
+      # TorBox-seedkezelés: csak az nCore-torrenteket seedeli, amíg a Hit'n'Run
+      # folyamatban; minden más seedelését leállítja (a fájl marad), és szól a
+      # telefonra, ha egy kötelezett torrent nem seedel vagy kevés a hely.
+      # Üres kulccsal nem fut. Állapot:
       #   docker compose exec stremhu python -m app.modules.torbox_seed.status
       - TORBOX_API_KEY=${TORBOX_API_KEY:-}
       - TORBOX_CLEANUP_DRY_RUN=${TORBOX_CLEANUP_DRY_RUN:-false}
       - TORBOX_SLOT_LIMIT=${TORBOX_SLOT_LIMIT:-10}
       - TORBOX_MIN_FREE_SLOTS=${TORBOX_MIN_FREE_SLOTS:-2}
-      - TORBOX_MAX_PAUSE_HOURS=${TORBOX_MAX_PAUSE_HOURS:-6}
       - TORBOX_MIN_SEED_HOURS=${TORBOX_MIN_SEED_HOURS:-24}
+      - TORBOX_SEED_TRACKERS=${TORBOX_SEED_TRACKERS:-ncore}
+      - TORBOX_NTFY_TOPIC=${NTFY_TOPIC:-}
     volumes:
       - stremhu-data:/app/data
       # Opcionális: a StremHU saját letöltései egy nagy HDD-re
