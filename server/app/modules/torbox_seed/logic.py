@@ -8,9 +8,12 @@ Szabályok:
      seedköteles trackerekét (pl. nyilvános torrentek), és a seedkötelesekét
      is, ha a Hit'n'Run teljesült. Nem törlünk: a fájl a TorBoxon marad, és
      továbbra is lejátszható.
-  3. Seedkötelezett torrent seedelését soha nem állítjuk le: a TorBox egy
-     leállított torrentet nem tud megbízhatóan újraindítani. Ha emiatt kevés a
-     szabad hely, csak figyelmeztetünk.
+  3. Seedkötelezett torrent seedelését csak vészhelyzetben állítjuk le: ha a
+     fentiek után is kevesebb a szabad hely, mint `min_free_slots`. Ilyenkor
+     annak a seedelését, amelyiknek a legkevesebb ideje van hátra (ismeretlen
+     hátralévő időnél a legrégebbiét), és azonnal szólunk, hogy máshol (pl. a
+     laptopon) kell befejezni – a TorBox egy leállított torrentet nem tud
+     újraindítani (kipróbálva).
   4. Ha egy seedkötelezett, már letöltött torrent nem seedel (a TorBox
      leállította, vagy elakadt), figyelmeztetünk – erről értesítés is megy.
   5. Óvatosság: folyamatban lévő letöltéshez nem nyúlunk. Ha a seedköteles
@@ -30,6 +33,8 @@ SEEDING_PREFIXES = ("uploading", "seeding")
 
 REASON_FULFILLED = "fulfilled"  # Hit'n'Run teljesítve
 REASON_NOT_REQUIRED = "not_required"  # nem seedköteles trackerről jött
+REASON_EMERGENCY = "emergency"  # helyhiány: máshol kell befejezni
+STOP_REASONS = (REASON_FULFILLED, REASON_NOT_REQUIRED, REASON_EMERGENCY)
 
 HNR_DONE = "teljesítve"
 HNR_PENDING = "folyamatban"
@@ -40,6 +45,11 @@ ALERT_NOT_SEEDING = "not_seeding"
 ALERT_STALLED = "stalled"
 ALERT_SLOTS = "slots"
 ALERT_HNR_UNAVAILABLE = "hnr_unavailable"
+ALERT_EMERGENCY = "emergency"
+
+DEFAULT_DETAILS_URLS = {
+    "ncore": "https://ncore.pro/torrents.php?action=details&id={torrent_id}",
+}
 
 
 @dataclass(frozen=True)
@@ -73,6 +83,8 @@ class HnrList:
 
     pending_ids: frozenset[str]
     complete: bool = True
+    # A tracker szerint mennyi seedelés van még hátra (ha kiderül az oldalról).
+    remaining: dict[str, datetime.timedelta] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,12 @@ class PlannerSettings:
     min_free_slots: int
     min_seed: datetime.timedelta
     seed_trackers: tuple[str, ...] = ("ncore",)
+    # Vészleállítás: teli helyeknél a seedkötelezettek közül is leállít.
+    emergency_stop: bool = True
+    # A torrent adatlapja a trackeren (az értesítésben link).
+    details_urls: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_DETAILS_URLS)
+    )
 
 
 @dataclass(frozen=True)
@@ -96,6 +114,8 @@ class Alert:
     key: str
     kind: str
     message: str
+    torrent_id: int | None = None
+    link: str | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +126,7 @@ class TorrentStatus:
     hnr: str
     occupies_slot: bool
     entry: StateEntry | None
+    remaining: datetime.timedelta | None = None
 
 
 @dataclass
@@ -238,15 +259,55 @@ def prune_state(
     return {
         torrent_id: entry
         for torrent_id, entry in state.items()
-        if torrent_id in existing
-        and entry.reason in (REASON_FULFILLED, REASON_NOT_REQUIRED)
+        if torrent_id in existing and entry.reason in STOP_REASONS
     }
+
+
+def format_remaining(remaining: datetime.timedelta) -> str:
+    minutes = max(int(remaining.total_seconds() // 60), 0)
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} ó {rest} p" if hours else f"{rest} p"
 
 
 def _label(torrent: TorboxTorrent, status: TorrentStatus) -> str:
     if status.ref is not None:
         return f"{torrent.name} ({status.ref.indexer_id} #{status.ref.torrent_id})"
     return torrent.name
+
+
+def _details_link(status: TorrentStatus, settings: PlannerSettings) -> str | None:
+    if status.ref is None:
+        return None
+    template = settings.details_urls.get(status.ref.indexer_id)
+    return template.format(torrent_id=status.ref.torrent_id) if template else None
+
+
+def _emergency_message(
+    status: TorrentStatus, settings: PlannerSettings, *, reminder: bool
+) -> str:
+    head = (
+        "Helyhiány miatt leállított seed – még nincs befejezve, fejezd be máshol"
+        if reminder
+        else "Helyhiány miatt leállítottam egy nCore-seedet – fejezd be máshol"
+    )
+    parts = [f"{head} (pl. a laptopon, qBittorrenttel): {status.torrent.name}"]
+    if status.remaining is not None:
+        parts.append(f"hátra: {format_remaining(status.remaining)}")
+    link = _details_link(status, settings)
+    if link:
+        parts.append(link)
+    return " – ".join(parts)
+
+
+def _emergency_sort_key(
+    status: TorrentStatus,
+) -> tuple[bool, datetime.timedelta, datetime.datetime]:
+    """Előbb a legkevesebb hátralévő idejű; ismeretlen időnél a legrégebbi."""
+    return (
+        status.remaining is None,
+        status.remaining or datetime.timedelta(0),
+        status.torrent.created_at or datetime.datetime.min.replace(tzinfo=datetime.UTC),
+    )
 
 
 def plan_actions(
@@ -262,6 +323,12 @@ def plan_actions(
     for torrent in torrents:
         ref = refs_by_hash.get(torrent.hash.lower())
         seed_tracker = seed_tracker_of(torrent, ref, settings.seed_trackers)
+        hnr_list = hnr_lists.get(seed_tracker) if seed_tracker else None
+        remaining = (
+            hnr_list.remaining.get(ref.torrent_id)
+            if hnr_list is not None and ref is not None
+            else None
+        )
         plan.statuses.append(
             TorrentStatus(
                 torrent=torrent,
@@ -270,6 +337,7 @@ def plan_actions(
                 hnr=hnr_status(torrent, ref, seed_tracker, hnr_lists, now, settings),
                 occupies_slot=occupies_slot(torrent),
                 entry=state.get(torrent.id),
+                remaining=remaining,
             )
         )
 
@@ -287,15 +355,54 @@ def plan_actions(
     occupied -= len(plan.stop)
     plan.free_after = settings.slot_limit - occupied
 
-    # 2. Figyelmeztetések a seedkötelezett torrentekről.
+    # 2. Vészleállítás: ha így is kevés a hely, a seedkötelezettek közül annak a
+    # seedelését állítjuk le, amelyiknek a legkevesebb ideje van hátra.
+    emergency_ids: set[int] = set()
+    if settings.emergency_stop and plan.free_after < settings.min_free_slots:
+        candidates = sorted(
+            (
+                status
+                for status in plan.statuses
+                if status.hnr == HNR_PENDING
+                and status.occupies_slot
+                and status.torrent.download_finished
+            ),
+            key=_emergency_sort_key,
+        )
+        need = settings.min_free_slots - plan.free_after
+        for status in candidates[:need]:
+            plan.stop.append((status.torrent, REASON_EMERGENCY))
+            emergency_ids.add(status.torrent.id)
+            plan.free_after += 1
+            plan.alerts.append(
+                Alert(
+                    key=f"{ALERT_EMERGENCY}:{status.torrent.id}",
+                    kind=ALERT_EMERGENCY,
+                    message=_emergency_message(status, settings, reminder=False),
+                    torrent_id=status.torrent.id,
+                    link=_details_link(status, settings),
+                )
+            )
+
+    # 3. Figyelmeztetések a seedkötelezett torrentekről.
     pending_seeding = 0
     for status in plan.statuses:
-        if status.hnr != HNR_PENDING:
+        if status.hnr != HNR_PENDING or status.torrent.id in emergency_ids:
             continue
         torrent = status.torrent
         state_text = normalized_state(torrent)
         if is_seeding(torrent):
             pending_seeding += 1
+        elif status.entry is not None and status.entry.reason == REASON_EMERGENCY:
+            plan.alerts.append(
+                Alert(
+                    key=f"{ALERT_EMERGENCY}:{torrent.id}",
+                    kind=ALERT_EMERGENCY,
+                    message=_emergency_message(status, settings, reminder=True),
+                    torrent_id=torrent.id,
+                    link=_details_link(status, settings),
+                )
+            )
         elif state_text.startswith("stalled"):
             plan.alerts.append(
                 Alert(
@@ -305,6 +412,8 @@ def plan_actions(
                         "Seedelni kellene, de elakadt (nincs letöltőtárs): "
                         f"{_label(torrent, status)}"
                     ),
+                    torrent_id=torrent.id,
+                    link=_details_link(status, settings),
                 )
             )
         elif torrent.download_finished:
@@ -317,6 +426,8 @@ def plan_actions(
                         f"(állapot: {torrent.download_state or '?'}): "
                         f"{_label(torrent, status)}"
                     ),
+                    torrent_id=torrent.id,
+                    link=_details_link(status, settings),
                 )
             )
 
@@ -328,8 +439,8 @@ def plan_actions(
                 message=(
                     f"Kevés a szabad hely a TorBoxon ({max(plan.free_after, 0)}/"
                     f"{settings.slot_limit}, cél: legalább {settings.min_free_slots}). "
-                    f"{pending_seeding} seedkötelezett torrent seedel, ezekhez a "
-                    "rendszer nem nyúl; új film indításakor a letöltés sorba állhat."
+                    f"{pending_seeding} seedkötelezett torrent seedel; új film "
+                    "indításakor a letöltés sorba állhat."
                 ),
             )
         )

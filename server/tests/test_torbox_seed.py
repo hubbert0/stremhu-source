@@ -9,6 +9,7 @@ from app.modules.torbox_seed.alerts import (
     AlertRecord,
     due_alerts,
     mark_sent,
+    notifiable_alerts,
     notification_text,
     send_ntfy,
 )
@@ -16,6 +17,7 @@ from app.modules.torbox_seed.background_tasks import _match_refs
 from app.modules.torbox_seed.client import TorboxApiError, TorboxClient
 from app.modules.torbox_seed.config import TorboxSeedSettings
 from app.modules.torbox_seed.logic import (
+    ALERT_EMERGENCY,
     ALERT_HNR_UNAVAILABLE,
     ALERT_NOT_SEEDING,
     ALERT_SLOTS,
@@ -24,6 +26,7 @@ from app.modules.torbox_seed.logic import (
     HNR_NONE,
     HNR_PENDING,
     HNR_UNKNOWN,
+    REASON_EMERGENCY,
     REASON_FULFILLED,
     REASON_NOT_REQUIRED,
     Alert,
@@ -88,11 +91,21 @@ def refs(*ids: int, indexer: str = "ncore") -> dict[str, TrackerTorrentRef]:
     return {h(n): TrackerTorrentRef(indexer_id=indexer, torrent_id=str(n)) for n in ids}
 
 
-def plan(torrents, refs_by_hash=None, pending=(), state=None, hnr="ok"):
+def plan(
+    torrents,
+    refs_by_hash=None,
+    pending=(),
+    state=None,
+    hnr="ok",
+    remaining=None,
+    settings=SETTINGS,
+):
+    hours = {str(n): datetime.timedelta(hours=v) for n, v in (remaining or {}).items()}
+    ids = frozenset(str(n) for n in pending)
     if hnr == "ok":
-        lists = {"ncore": HnrList(frozenset(str(n) for n in pending), complete=True)}
+        lists = {"ncore": HnrList(ids, complete=True, remaining=hours)}
     elif hnr == "incomplete":
-        lists = {"ncore": HnrList(frozenset(str(n) for n in pending), complete=False)}
+        lists = {"ncore": HnrList(ids, complete=False, remaining=hours)}
     else:
         lists = {}
     return plan_actions(
@@ -101,7 +114,7 @@ def plan(torrents, refs_by_hash=None, pending=(), state=None, hnr="ok"):
         hnr_lists=lists,
         state=state or {},
         now=NOW,
-        settings=SETTINGS,
+        settings=settings,
     )
 
 
@@ -215,13 +228,84 @@ def test_nine_active_frees_slots_without_touching_pending():
     assert ALERT_SLOTS not in alert_kinds(p)
 
 
-def test_full_slots_with_only_pending_seeds_alerts_but_keeps_seeding():
+def test_full_slots_emergency_stops_the_one_closest_to_done():
+    torrents = [torrent(n) for n in range(1, 10)]  # 9 aktív → 1 szabad
+    remaining = {n: 40 for n in range(1, 10)} | {4: 3, 7: 10}
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10), remaining=remaining)
+    assert stopped(p, REASON_EMERGENCY) == [4]  # 3 óra van hátra: ez a legrövidebb
+    assert p.free_after == 2
+    assert alert_kinds(p) == [ALERT_EMERGENCY]
+    alert = p.alerts[0]
+    assert alert.torrent_id == 4
+    assert alert.link == "https://ncore.pro/torrents.php?action=details&id=4"
+    assert "hátra: 3 ó 0 p" in alert.message
+    assert "fejezd be máshol" in alert.message
+
+
+def test_full_slots_emergency_stops_as_many_as_needed():
+    torrents = [torrent(n) for n in range(1, 11)]  # 10 aktív → 0 szabad
+    p = plan(
+        torrents,
+        refs(*range(1, 11)),
+        pending=range(1, 11),
+        remaining={n: n for n in range(1, 11)},
+    )
+    assert stopped(p, REASON_EMERGENCY) == [1, 2]
+    assert p.free_after == 2
+
+
+def test_emergency_without_remaining_time_picks_oldest_and_young_last():
+    torrents = [
+        torrent(1, age_hours=30),
+        torrent(2, age_hours=80),  # a legrégebbi
+        torrent(3, age_hours=2),  # friss: még nincs is az nCore listáján
+    ] + [torrent(n, age_hours=40) for n in range(4, 10)]
+    pending = [1, 2] + list(range(4, 10))
+    p = plan(torrents, refs(*range(1, 10)), pending=pending)
+    assert stopped(p, REASON_EMERGENCY) == [2]
+
+
+def test_emergency_disabled_only_alerts():
+    settings = PlannerSettings(
+        slot_limit=10,
+        min_free_slots=2,
+        min_seed=datetime.timedelta(hours=24),
+        emergency_stop=False,
+    )
     torrents = [torrent(n) for n in range(1, 10)]
-    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10))
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10), settings=settings)
     assert p.stop == []
     assert p.free_after == 1
     assert alert_kinds(p) == [ALERT_SLOTS]
     assert "9 seedkötelezett torrent seedel" in p.alerts[0].message
+
+
+def test_downloads_in_progress_are_never_emergency_stopped():
+    torrents = [torrent(n, state="downloading", finished=False) for n in range(1, 10)]
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10))
+    assert p.stop == []
+    assert alert_kinds(p) == [ALERT_SLOTS]
+
+
+def test_emergency_stopped_torrent_gets_reminders_under_same_key():
+    torrents = [torrent(1, state="stopped seeding", active=False)]
+    state = {1: StateEntry(REASON_EMERGENCY, NOW - datetime.timedelta(hours=1))}
+    p = plan(torrents, refs(1), pending=[1], state=state, remaining={1: 5})
+    assert [(a.kind, a.key) for a in p.alerts] == [(ALERT_EMERGENCY, "emergency:1")]
+    assert "még nincs befejezve" in p.alerts[0].message
+    assert "hátra: 5 ó 0 p" in p.alerts[0].message
+
+
+def test_emergency_alert_only_when_the_stop_happened():
+    torrents = [torrent(n) for n in range(1, 10)]
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10))
+    target = stopped(p, REASON_EMERGENCY)[0]
+    assert notifiable_alerts(p, stopped_now=set()) == []  # próbaüzem vagy hiba
+    assert [a.torrent_id for a in notifiable_alerts(p, {target})] == [target]
+    due, _ = due_alerts(
+        notifiable_alerts(p, {target}), {}, NOW, datetime.timedelta(hours=12)
+    )
+    assert [a.kind for a in due] == [ALERT_EMERGENCY]  # azonnal szól
 
 
 # --- Figyelmeztetések --------------------------------------------------------
@@ -293,6 +377,13 @@ def test_notification_text_and_send():
     assert ok
     assert seen["body"]["topic"] == "tema"
     assert seen["body"]["title"] == title
+    assert "click" not in seen["body"]
+
+    linked = [Alert(key="e", kind=ALERT_EMERGENCY, message="m", link="https://x/1")]
+    assert asyncio.run(
+        send_ntfy("https://ntfy.test", "tema", linked, httpx.MockTransport(handler))
+    )
+    assert seen["body"]["click"] == "https://x/1"
 
     def failing(_: httpx.Request) -> httpx.Response:
         return httpx.Response(500)
@@ -586,3 +677,60 @@ def test_resolve_hnr_ids_downloads_missing_with_limit(monkeypatch):
     assert "404" not in calls  # a törölt torrentet egy napig nem kérdezi újra
     assert unresolved == 1
     bt._absent_ids.clear()
+
+
+def test_report_shows_remaining_and_emergency_action():
+    torrents = [torrent(n) for n in range(1, 10)]
+    remaining = {n: 40 for n in range(1, 10)} | {4: 3}
+    p = plan(torrents, refs(*range(1, 10)), pending=range(1, 10), remaining=remaining)
+    status = build_status(p, {}, SETTINGS, NOW, dry_run=False, warnings=[])
+    text = format_status(status, NOW)
+    assert "seed leállítva (helyhiány – fejezd be máshol); hátra: 3 ó 0 p" in text
+    assert "hátra: 40 ó 0 p" in text
+
+
+# --- Az nCore Hit'n'Run-oldala ------------------------------------------------
+
+
+def test_parse_ncore_hit_and_run_page():
+    from app.modules.indexer_definitions.integrations.ncore import (
+        parse_hit_and_run_page,
+    )
+
+    def row(torrent_id: int, *cells: str) -> str:
+        link = f'<a href="torrents.php?action=details&amp;id={torrent_id}">x</a>'
+        tail = "".join(f"<div>{cell}</div>" for cell in cells)
+        return f'<div class="hnr_all"><div class="hnr_tname">{link}</div>{tail}</div>'
+
+    html = (
+        '<div id="main_tartalom"><div class="lista">'
+        + row(
+            4241578, "2 napja", "1 perce", "Leech", "26.81 GiB", "10ó&nbsp;36p", "0.001"
+        )
+        + row(1339943, "3 órája", "24 perce", "Seed", "829.18 MiB", "45ó 19p", "0.000")
+        + row(7, "1 napja", "2 perce", "Seed", "47p")
+        + row(8, "1 napja", "2 perce", "Seed", "-")
+        + "</div></div>"
+    )
+    entries = parse_hit_and_run_page(html, "https://ncore.pro")
+    assert entries == {
+        "4241578": datetime.timedelta(hours=10, minutes=36),
+        "1339943": datetime.timedelta(hours=45, minutes=19),
+        "7": datetime.timedelta(minutes=47),
+        "8": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("1n 2ó 5p", datetime.timedelta(days=1, hours=2, minutes=5)),
+        ("5ó 47p", datetime.timedelta(hours=5, minutes=47)),
+        ("2 napja 24 perce 3 órája", None),
+        ("0.001 23.21 MiB", None),
+    ],
+)
+def test_parse_remaining(text, expected):
+    from app.modules.indexer_definitions.integrations.ncore import parse_remaining
+
+    assert parse_remaining(text) == expected

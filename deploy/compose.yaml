@@ -60,8 +60,9 @@ services:
       # Kötelező egyedi titok! Az alapértelmezett nyilvánosan ismert.
       - SESSION_SECRET=${STREMHU_SESSION_SECRET:?Futtasd az init-env.sh-t}
       # TorBox-seedkezelés: csak az nCore-torrenteket seedeli, amíg a Hit'n'Run
-      # folyamatban; minden más seedelését leállítja (a fájl marad), és szól a
-      # telefonra, ha egy kötelezett torrent nem seedel vagy kevés a hely.
+      # folyamatban; minden más seedelését leállítja (a fájl marad). Teli
+      # helyeknél a legkevesebb hátralévő idejű nCore-seedet is leállítja, és
+      # szól a telefonra, hogy máshol kell befejezni.
       # Üres kulccsal nem fut. Állapot:
       #   docker compose exec stremhu python -m app.modules.torbox_seed.status
       - TORBOX_API_KEY=${TORBOX_API_KEY:-}
@@ -70,6 +71,7 @@ services:
       - TORBOX_MIN_FREE_SLOTS=${TORBOX_MIN_FREE_SLOTS:-2}
       - TORBOX_MIN_SEED_HOURS=${TORBOX_MIN_SEED_HOURS:-24}
       - TORBOX_SEED_TRACKERS=${TORBOX_SEED_TRACKERS:-ncore}
+      - TORBOX_EMERGENCY_STOP=${TORBOX_EMERGENCY_STOP:-true}
       - TORBOX_NTFY_TOPIC=${NTFY_TOPIC:-}
     volumes:
       - stremhu-data:/app/data

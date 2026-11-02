@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 from abc import ABC, abstractmethod
 
@@ -192,6 +193,11 @@ class BaseIndexerDefinition(ABC):
     async def _fetch_hit_and_run_ids(self) -> list[str]:
         """Lekéri a Hit 'n' Run listán lévő torrent azonosítókat."""
 
+    async def _fetch_hit_and_run_entries(self) -> dict[str, datetime.timedelta | None]:
+        """A Hit 'n' Run lista elemei, és mennyi seedelés van még hátra
+        (None, ha az oldal ezt nem mutatja). Alapból csak az azonosítók."""
+        return {torrent_id: None for torrent_id in await self._fetch_hit_and_run_ids()}
+
     # --- Megvalósított publikus API ---
 
     async def login(
@@ -279,6 +285,14 @@ class BaseIndexerDefinition(ABC):
     async def find_hit_and_run_ids(self) -> list[str]:
         try:
             return await self._fetch_hit_and_run_ids()
+        except Exception as e:
+            error_msg = f"{self.name} nem érhető el vagy megváltozott a struktúrája."
+            self.logger.error(error_msg, exc_info=e)
+            raise IndexerDefinitionException(error_msg) from e
+
+    async def find_hit_and_run_entries(self) -> dict[str, datetime.timedelta | None]:
+        try:
+            return await self._fetch_hit_and_run_entries()
         except Exception as e:
             error_msg = f"{self.name} nem érhető el vagy megváltozott a struktúrája."
             self.logger.error(error_msg, exc_info=e)

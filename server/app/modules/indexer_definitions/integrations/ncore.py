@@ -3,10 +3,12 @@
 @website https://stremhu.hu
 """
 
+import datetime
+import re
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpx
-from selectolax.lexbor import LexborHTMLParser
+from selectolax.lexbor import LexborHTMLParser, LexborNode
 
 from app.modules.indexer_definitions.base_indexer_definition import (
     BaseIndexerDefinition,
@@ -96,7 +98,7 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
                 "miszerint": "seeders",
                 "hogyan": "DESC",
                 "jsons": True,
-                "tipus": "all"
+                "tipus": "all",
             },
         )
 
@@ -170,28 +172,11 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
         )
 
     async def _fetch_hit_and_run_ids(self) -> list[str]:
+        return list(await self._fetch_hit_and_run_entries())
+
+    async def _fetch_hit_and_run_entries(self) -> dict[str, datetime.timedelta | None]:
         response = await self._client.get("/hitnrun.php", params={"showall": "false"})
-        tree = LexborHTMLParser(response.text)
-
-        content = tree.css_first("#main_tartalom")
-        if not content:
-            raise Exception("A tartalom nem található.")
-
-        hrefs = [
-            node.attributes.get("href")
-            for node in content.css('a[href*="torrents.php?action=details&id="]')
-        ]
-
-        ids = []
-        for href in hrefs:
-            if not href:
-                continue
-            full_url = urljoin(self.url, href)
-            id_val = parse_qs(urlparse(full_url).query).get("id", [None])[0]
-            if id_val:
-                ids.append(id_val)
-
-        return ids
+        return parse_hit_and_run_page(response.text, self.url)
 
     def _resolve_resolution(self, category: str) -> str:
         if "hd" in category:
@@ -202,3 +187,63 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
         if "hun" in category:
             return MediaAttributeKey.HUN
         return MediaAttributeKey.ENG
+
+
+_DETAILS_LINK = 'a[href*="torrents.php?action=details&id="]'
+
+# A „Hátravan” oszlop, pl. „10ó 36p”, „45ó 19p”, „1n 2ó 5p”, „47p”. A többi
+# időpont-oszlop („2 napja”, „24 perce”, „3 órája”) szavakkal van kiírva, azokra
+# ezek a minták nem illeszkednek.
+_REMAINING_FULL = re.compile(
+    r"(?:(\d+)\s*n(?:ap)?\s+)?(\d+)\s*ó\s*(\d+)\s*p(?![a-záéíóöőúüű])", re.IGNORECASE
+)
+_REMAINING_MINUTES = re.compile(
+    r"(?<![\d.,])(\d+)\s*p(?![a-záéíóöőúüű])", re.IGNORECASE
+)
+
+
+def parse_remaining(text: str) -> datetime.timedelta | None:
+    """A sor szövegéből kiolvassa a hátralévő seedidőt (az utolsó egyezést)."""
+    matches = list(_REMAINING_FULL.finditer(text))
+    if matches:
+        days, hours, minutes = matches[-1].groups()
+        return datetime.timedelta(
+            days=int(days or 0), hours=int(hours), minutes=int(minutes)
+        )
+    matches = list(_REMAINING_MINUTES.finditer(text))
+    if matches:
+        return datetime.timedelta(minutes=int(matches[-1].group(1)))
+    return None
+
+
+def _row_of(link: LexborNode) -> LexborNode:
+    """A torrent sora: a legkülső szülő, amelyben még csak ez az egy link van."""
+    row = link
+    parent = row.parent
+    while parent is not None and len(parent.css(_DETAILS_LINK)) == 1:
+        row = parent
+        parent = row.parent
+    return row
+
+
+def parse_hit_and_run_page(
+    html: str, base_url: str
+) -> dict[str, datetime.timedelta | None]:
+    tree = LexborHTMLParser(html)
+
+    content = tree.css_first("#main_tartalom")
+    if not content:
+        raise Exception("A tartalom nem található.")
+
+    entries: dict[str, datetime.timedelta | None] = {}
+    for link in content.css(_DETAILS_LINK):
+        href = link.attributes.get("href")
+        if not href:
+            continue
+        full_url = urljoin(base_url, href)
+        id_val = parse_qs(urlparse(full_url).query).get("id", [None])[0]
+        if not id_val or id_val in entries:
+            continue
+        entries[id_val] = parse_remaining(_row_of(link).text(separator=" "))
+
+    return entries

@@ -26,6 +26,11 @@ class TorboxSeedSettings(BaseSettings):
     # regisztrál), és egy ismeretlen privát torrentet sem állítunk le.
     min_seed_hours: float = Field(default=24, ge=0)
 
+    # Vészleállítás: ha a nem kötelezettek leállítása után is kevesebb a szabad
+    # hely, mint `min_free_slots`, a seedkötelezettek közül annak a seedelését
+    # is leállítja, amelyiknek a legkevesebb ideje van hátra (és szól).
+    emergency_stop: bool = True
+
     # Seedköteles trackerek (vesszővel elválasztva): a StremHU indexer-azonosítója,
     # és egyben a tracker címében keresett szó. Csak ezek torrentjeit seedeljük.
     seed_trackers: str = "ncore"

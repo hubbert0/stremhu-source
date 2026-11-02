@@ -30,7 +30,7 @@ flowchart LR
 | **Állapotfigyelő** | Gatus: mi működik, mi nem; hiba esetén értesítés a telefonra (ntfy) | csak a saját tailnetedről |
 | **Mentés** | Backrest: titkosított napi mentés felhőtárhelyre | csak a saját tailnetedről |
 | **Automatikus karbantartás** | Önjavító figyelő (3 percenként: ami nem válaszol, újraindítja) és heti automatikus frissítés, értesítéssel | a szerveren, ütemezve (cron) |
-| **TorBox-helykezelés** | Csak az nCore-torrenteket seedeli, amíg a Hit'n'Run folyamatban, minden más seedelését leállítja (a fájl marad), és szól a telefonra, ha egy kötelezett torrent nem seedel vagy kevés a hely | a StremHU-n belül fut |
+| **TorBox-helykezelés** | Csak az nCore-torrenteket seedeli, amíg a Hit'n'Run folyamatban, minden más seedelését leállítja (a fájl marad); teli helyeknél a legkevesebb hátralévő idejű nCore-seedet is leállítja, és szól a telefonra, hogy máshol kell befejezni | a StremHU-n belül fut |
 | **Szerverpult** | Böngészős kezelőfelület a szerveren: állapot, Docker, frissítés, széf, terminál | csak a saját tailnetedről |
 | **Helyi Szerverpult** | Ugyanez Windows-programként a saját gépeden, SSH-n át; UltraVNC-indítással | csak a saját gépedről |
 

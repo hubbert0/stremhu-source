@@ -5,17 +5,20 @@ from typing import Any
 
 from app.modules.torbox_seed.logic import (
     HNR_PENDING,
+    REASON_EMERGENCY,
     REASON_FULFILLED,
     REASON_NOT_REQUIRED,
     Plan,
     PlannerSettings,
     StateEntry,
+    format_remaining,
     parse_datetime,
 )
 
 REASON_LABELS = {
     REASON_FULFILLED: "Hit'n'Run teljesítve",
     REASON_NOT_REQUIRED: "nem kell seedelni",
+    REASON_EMERGENCY: "helyhiány – fejezd be máshol",
     # Régebbi változat bejegyzései (olvasáshoz):
     "public": "nem kell seedelni",
     "slot": "helyfelszabadítás",
@@ -82,6 +85,11 @@ def build_status(
                 "action": action,
                 "entry_reason": entry.reason if entry else None,
                 "entry_at": entry.at.isoformat() if entry else None,
+                "remaining_minutes": (
+                    int(status.remaining.total_seconds() // 60)
+                    if status.remaining is not None
+                    else None
+                ),
             }
         )
 
@@ -159,6 +167,12 @@ def format_status(
                     f"seed leállítva ({label}, "
                     f"{_ago(parse_datetime(row.get('entry_at')), now)})"
                 )
+            remaining_minutes = row.get("remaining_minutes")
+            if row.get("hnr") == HNR_PENDING and remaining_minutes is not None:
+                remaining = format_remaining(
+                    datetime.timedelta(minutes=remaining_minutes)
+                )
+                note = f"{note}; hátra: {remaining}" if note else f"hátra: {remaining}"
             lines.append(
                 f"{_cut(state_label(str(row.get('state') or '')), 10):<10} "
                 f"{_cut(str(row.get('hnr') or ''), 12):<12} "

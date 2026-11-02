@@ -329,15 +329,16 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 
 A TorBox csomagonként korlátozott számú aktív helyet ad (Pro: 10), és ebbe a seedelő torrentek is beleszámítanak. Ha betelt, az új letöltések sorba állnak – vagyis a film nem indul. A helykezelés ezt előzi meg. Ha a `TORBOX_API_KEY` meg van adva, a StremHU **5 percenként** végignézi a TorBox összes torrentjét:
 
-1. **Seedelni csak az nCore-torrenteket kell**, amíg az nCore Hit'n'Run-listáján szerepelnek (és az első 24 órában, mert az nCore késve veszi fel őket). Ezekhez a rendszer **soha nem nyúl**.
+1. **Seedelni csak az nCore-torrenteket kell**, amíg az nCore Hit'n'Run-listáján szerepelnek (és az első 24 órában, mert az nCore késve veszi fel őket). Ezekhez a rendszer csak vészhelyzetben nyúl (3. pont).
 2. **Minden más letöltött torrent seedelését leállítja** (TorBox: *stop seeding*): a nem nCore-ról jötteket (nyilvános torrentek, más trackerek), és az nCore-osakat is, ha a Hit'n'Run teljesült. **Nem töröl semmit** – a fájl a TorBoxon marad, a Stremióban ugyanúgy lejátszható, és a TorBox a saját lejárati ideje után magától törli.
-3. **Szól a telefonra** (ntfy, ugyanaz a téma, mint az állapotfigyelőé), ha egy seedelésre kötelezett nCore-torrent nem seedel (a TorBox leállította, vagy elakadt), vagy ha 2-nél kevesebb a szabad hely. Egy problémáról csak akkor jön értesítés, ha legalább negyedórája fennáll, és utána legfeljebb 12 óránként ismétlődik.
+3. **Vészleállítás:** ha ezek után is **2-nél kevesebb** a szabad hely (csupa seedelésre kötelezett nCore-torrent foglalja), annak a seedelését állítja le, amelyiknek az nCore Hit'n'Run-oldala szerint a **legkevesebb ideje van hátra** (ha ez nem derül ki, a legrégebbiét) – pontosan annyit, hogy újra 2 hely szabad legyen. Erről **azonnal értesítést** küld a torrent nevével, a hátralévő idővel és az nCore-adatlap linkjével (az értesítésre koppintva megnyílik): onnan a .torrent fájl a laptopon a qBittorrentbe tehető, és ott kell befejezni a seedelést. Amíg nincs befejezve, 12 óránként emlékeztet. (A TorBox egy leállított torrentet nem tud újraindítani – kipróbálva –, ezért kell máshol befejezni.)
+4. **Szól a telefonra** (ntfy, ugyanaz a téma, mint az állapotfigyelőé), ha egy seedelésre kötelezett nCore-torrent nem seedel (a TorBox leállította, vagy elakadt), vagy ha a vészleállítás után is kevés a hely (pl. mert a helyeket letöltések foglalják). Egy ilyen problémáról csak akkor jön értesítés, ha legalább negyedórája fennáll, és utána legfeljebb 12 óránként ismétlődik.
 
 **Melyik torrent nCore-os?** Amit a StremHU adott a TorBoxnak, azt ismeri. A többit az nCore Hit'n'Run-listája alapján azonosítja: a listán lévő torrentek .torrent fájlját letölti, és a hash-ük vagy a nevük alapján megkeresi őket a TorBoxon (ellenőrzésenként legfeljebb 10-et, hogy ne terhelje az nCore-t). Ha a TorBox megadja a torrent trackerét, abból is felismeri.
 
 Biztonsági szabályok: folyamatban lévő letöltéshez **nem nyúl**. Ha az nCore Hit'n'Run-listája épp nem érhető el, vagy még nincs minden eleme azonosítva, az ismeretlen eredetű torrentekhez sem. Egy ismeretlen privát torrentet az első 24 órában nem állít le.
 
-**Fontos TorBox-beállítás:** a TorBox weboldalán a **Settings** oldalon a seedelési beállítás legyen **Always** (alapból *Auto*). *Auto* állásban a TorBox magától is abbahagyhatja a seedelést, akkor is, ha az nCore még várja – erről a rendszer értesítést küld, de újraindítani nem tudja (a TorBox egy leállított torrentet nem tud megbízhatóan újraindítani). Ilyenkor a Hit'n'Run-t a saját gépről, torrentkliensből lehet teljesíteni: az nCore-ról letöltött .torrent fájllal.
+**Fontos TorBox-beállítás:** a TorBox weboldalán a **Settings** oldalon a seedelési beállítás legyen **Always** (alapból *Auto*). *Auto* állásban a TorBox magától is abbahagyhatja a seedelést, akkor is, ha az nCore még várja – erről a rendszer értesítést küld, de újraindítani nem tudja (a TorBox egy leállított torrentet nem tud újraindítani). Ilyenkor a Hit'n'Run-t a saját gépről, torrentkliensből lehet teljesíteni: az nCore-ról letöltött .torrent fájllal.
 
 ### Állapotjelentés
 
@@ -357,7 +358,7 @@ Szabad hely: 4/10 (cél: legalább 2)
 Seedelni csak ezeket kell: ncore (amíg a Hit'n'Run folyamatban)
 
 Állapot    Hit-n-Run    Tracker          Név                                          Művelet / megjegyzés
-seedel     folyamatban  ncore #1234567   Film.2024.1080p…
+seedel     folyamatban  ncore #1234567   Film.2024.1080p…                             hátra: 31 ó 5 p
 seedel     teljesítve   ncore #7654321   Masik.Film…                                  seed leállítva (Hit'n'Run teljesítve)
 seedel     nincs        -                Public.Movie.2026.1080p…                     seed leállítva (nem kell seedelni)
 ```
@@ -367,7 +368,7 @@ seedel     nincs        -                Public.Movie.2026.1080p…             
 | **Állapot** | `seedel`, `tölt`, `szünetel`, `seed vége`, `lejárt`, `kész`, `elakadt`, `ellenőriz` |
 | **Hit-n-Run** | `folyamatban` = még seedelni kell · `teljesítve` = letudva · `nincs` = nem nCore-ról jött, nem kell seedelni · `ismeretlen` = még nem dönthető el, ezért nem nyúl hozzá |
 | **Tracker** | melyik oldalról és melyik torrent (nCore-azonosító); `ncore (tracker)` = a TorBox által jelzett trackerből ismerte fel |
-| **Művelet / megjegyzés** | mit csinált most, vagy korábban: *seed leállítva (Hit'n'Run teljesítve)*, *seed leállítva (nem kell seedelni)* |
+| **Művelet / megjegyzés** | mit csinált most, vagy korábban: *seed leállítva (Hit'n'Run teljesítve)*, *seed leállítva (nem kell seedelni)*, *seed leállítva (helyhiány – fejezd be máshol)*; a kötelezetteknél: mennyi seedelés van még hátra az nCore szerint |
 
 A ⚠️ sorok a figyelmeztetések (ezekről értesítés is megy): kötelezett torrent, amely nem seedel vagy elakadt; kevés szabad hely; elérhetetlen Hit'n'Run-lista; vagy hogy a TorBox egy leállított torrentet még mindig aktívnak jelez.
 
@@ -381,6 +382,7 @@ A `.env`-be írva (utána `docker compose up -d`):
 | `TORBOX_MIN_FREE_SLOTS` | 2 | ennyi hely legyen szabad (ha kevesebb, figyelmeztetés jön) |
 | `TORBOX_MIN_SEED_HOURS` | 24 | ennyi ideig tekint egy friss nCore-torrentet kötelezettnek, akkor is, ha még nincs az nCore listáján; ennyi ideig nem állít le egy ismeretlen privát torrentet |
 | `TORBOX_SEED_TRACKERS` | ncore | a seedköteles trackerek (vesszővel elválasztva) |
+| `TORBOX_EMERGENCY_STOP` | true | vészleállítás teli helyeknél (`false` = csak értesítés, a kötelezettekhez nem nyúl) |
 | `TORBOX_CLEANUP_DRY_RUN` | false | `true` = próbaüzem, csak jelent |
 
 Az értesítések az `NTFY_TOPIC` témára mennek; ha az üres, nem megy értesítés (a jelentésben a figyelmeztetések akkor is látszanak).

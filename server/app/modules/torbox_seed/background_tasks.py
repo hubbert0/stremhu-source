@@ -9,7 +9,12 @@ from app.config import config
 from app.modules.indexer_definitions.dependencies import (
     get_indexer_definitions_service,
 )
-from app.modules.torbox_seed.alerts import due_alerts, mark_sent, send_ntfy
+from app.modules.torbox_seed.alerts import (
+    due_alerts,
+    mark_sent,
+    notifiable_alerts,
+    send_ntfy,
+)
 from app.modules.torbox_seed.client import TorboxClient
 from app.modules.torbox_seed.config import TorboxSeedSettings, get_torbox_seed_settings
 from app.modules.torbox_seed.logic import (
@@ -40,8 +45,9 @@ from app.modules.torrent_source_provider.dependencies import (
     create_torrent_source_provider_service,
 )
 
-# indexer_id -> (lekérés ideje, nem teljesített torrent-azonosítók)
-_hnr_cache: dict[str, tuple[datetime.datetime, set[str]]] = {}
+# indexer_id -> (lekérés ideje, {nem teljesített torrent-azonosító: hátralévő idő})
+_HnrEntries = dict[str, datetime.timedelta | None]
+_hnr_cache: dict[str, tuple[datetime.datetime, _HnrEntries]] = {}
 
 # (indexer_id, torrent_id) -> mikor derült ki, hogy a tracker oldalán nincs ilyen
 # torrent (törölték). Ezeket egy napig nem próbáljuk újra azonosítani.
@@ -89,15 +95,16 @@ def _find_refs(info_hashes: set[str]) -> dict[str, TrackerTorrentRef]:
     return refs
 
 
-async def _fetch_hnr_ids(
+async def _fetch_hnr_entries(
     indexer_ids: tuple[str, ...],
     now: datetime.datetime,
     cache_ttl: datetime.timedelta,
-) -> dict[str, set[str]]:
-    """Lekéri a trackerek Hit'n'Run „nem teljesített” listáit (gyorsítótárral).
+) -> dict[str, _HnrEntries]:
+    """Lekéri a trackerek Hit'n'Run „nem teljesített” listáit (gyorsítótárral),
+    a hátralévő seedidővel együtt, ha az oldal mutatja.
     Ha egy tracker listája nem érhető el, az kimarad: ott nem nyúlunk semmihez."""
     definitions_service = get_indexer_definitions_service()
-    result: dict[str, set[str]] = {}
+    result: dict[str, _HnrEntries] = {}
 
     for indexer_id in indexer_ids:
         cached = _hnr_cache.get(indexer_id)
@@ -106,12 +113,14 @@ async def _fetch_hnr_ids(
             continue
         try:
             definition = definitions_service.get_by_id(indexer_id)
-            ids = {
-                str(torrent_id)
-                for torrent_id in await definition.find_hit_and_run_ids()
+            entries = {
+                str(torrent_id): remaining
+                for torrent_id, remaining in (
+                    await definition.find_hit_and_run_entries()
+                ).items()
             }
-            _hnr_cache[indexer_id] = (now, ids)
-            result[indexer_id] = ids
+            _hnr_cache[indexer_id] = (now, entries)
+            result[indexer_id] = entries
         except Exception:
             logger.warning(
                 "⚠️ TorBox: a(z) %s Hit'n'Run listája nem érhető el, "
@@ -232,6 +241,7 @@ def _planner_settings(settings: TorboxSeedSettings) -> PlannerSettings:
         min_free_slots=settings.min_free_slots,
         min_seed=datetime.timedelta(hours=settings.min_seed_hours),
         seed_trackers=settings.seed_tracker_list,
+        emergency_stop=settings.emergency_stop,
     )
 
 
@@ -254,19 +264,26 @@ async def run_torbox_seed_cleanup() -> None:
         hashes = {torrent.hash for torrent in torrents if torrent.hash}
         refs = await asyncio.to_thread(_find_refs, hashes)
 
-        hnr_ids = await _fetch_hnr_ids(
+        hnr_entries = await _fetch_hnr_entries(
             planner_settings.seed_trackers,
             now,
             datetime.timedelta(minutes=settings.hnr_cache_minutes),
         )
         hnr_lists: dict[str, HnrList] = {}
-        for indexer_id, ids in hnr_ids.items():
+        for indexer_id, entries in hnr_entries.items():
+            ids = set(entries)
             maps, unresolved = await _resolve_hnr_ids(
                 indexer_id, ids, settings.hnr_resolve_limit, now
             )
             _match_refs(torrents, refs, maps)
             hnr_lists[indexer_id] = HnrList(
-                pending_ids=frozenset(ids), complete=unresolved == 0
+                pending_ids=frozenset(ids),
+                complete=unresolved == 0,
+                remaining={
+                    torrent_id: remaining
+                    for torrent_id, remaining in entries.items()
+                    if remaining is not None
+                },
             )
             if unresolved:
                 logger.info(
@@ -325,9 +342,12 @@ async def run_torbox_seed_cleanup() -> None:
         if not dry_run:
             save_state(state_path, state)
 
+        # A vészleállításról csak akkor szólunk, ha tényleg megtörtént.
+        alerts = notifiable_alerts(plan, stopped_now)
+
         records = load_alert_records(alerts_path)
         due, records = due_alerts(
-            plan.alerts,
+            alerts,
             records,
             now,
             datetime.timedelta(hours=settings.alert_repeat_hours),
@@ -341,7 +361,7 @@ async def run_torbox_seed_cleanup() -> None:
                 )
         save_alert_records(alerts_path, records)
 
-        for alert in plan.alerts:
+        for alert in alerts:
             logger.warning("⚠️ TorBox: %s", alert.message)
         for warning in warnings:
             logger.warning("⚠️ TorBox: %s", warning)
@@ -354,7 +374,7 @@ async def run_torbox_seed_cleanup() -> None:
                 planner_settings,
                 now,
                 dry_run,
-                [alert.message for alert in plan.alerts] + warnings,
+                [alert.message for alert in alerts] + warnings,
             ),
         )
 
