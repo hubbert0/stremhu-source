@@ -5,6 +5,9 @@ Szerverenként négy sor, N = 1, 2, ... (legfeljebb 9):
     EMBYN_URL=https://...       – ahogy kívülről, a böngészőből is eléred
     EMBYN_FELHASZNALO=stremio   – külön, csak lejátszásra jogosult felhasználó
     EMBYN_JELSZO=...
+
+A „Mesék” sorokhoz a TMDB-kulcs kell (ugyanaz, mint a saját TMDB-addoné):
+    TMDB_API_KEY=...
 """
 
 import logging
@@ -13,7 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 MAX_SERVERS = 9
 MIN_SECRET_LENGTH = 16
 
@@ -37,6 +40,7 @@ class Settings:
     servers: tuple[EmbyServer, ...]
     page_size: int = 100
     timeout: float = 12.0
+    tmdb_api_key: str = ""
 
     @property
     def secret_ok(self) -> bool:
@@ -83,4 +87,5 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         secret=env.get("EMBY_ADDON_SECRET", "").strip(),
         data_dir=Path(env.get("EMBY_DATA_DIR", "/data")),
         servers=load_servers(env),
+        tmdb_api_key=env.get("TMDB_API_KEY", "").strip(),
     )

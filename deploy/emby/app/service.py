@@ -9,6 +9,7 @@ from typing import Any
 from app.cache import Cache
 from app.config import VERSION, Settings
 from app.emby import EmbyClient, EmbyError, imdb_id, tmdb_id
+from app.mese import MESE_CATALOGS, MeseCatalog
 
 logger = logging.getLogger("emby")
 
@@ -102,18 +103,25 @@ def basename(path: object) -> str:
 
 class EmbyService:
     def __init__(
-        self, settings: Settings, cache: Cache, clients: dict[int, EmbyClient]
+        self,
+        settings: Settings,
+        cache: Cache,
+        clients: dict[int, EmbyClient],
+        mese: MeseCatalog | None = None,
     ) -> None:
         self.settings = settings
         self.cache = cache
         self.clients = clients
+        self.mese = mese
 
     # ------------------------------------------------------------- manifest
 
     async def manifest(self) -> dict[str, Any]:
         clients = sorted(self.clients.items())
         libraries = await asyncio.gather(*(self.library(c) for _, c in clients))
-        catalogs: list[dict[str, Any]] = []
+        catalogs: list[dict[str, Any]] = (
+            MeseCatalog.manifest_catalogs() if self.mese else []
+        )
         for (index, client), entries in zip(clients, libraries, strict=True):
             if not entries:
                 # Még soha nem sikerült beolvasni a könyvtárait: egy-egy összesítő sor.
@@ -151,7 +159,8 @@ class EmbyService:
             "name": "Emby-könyvtár",
             "description": "A saját Emby-szerverek könyvtárai a kezdőlapon, "
             "lejátszás közvetlenül az Embyről."
-            + (f" Szerverek: {names}." if names else ""),
+            + (f" Szerverek: {names}." if names else "")
+            + (" Mesék: gyerekbarát filmek és sorozatok." if self.mese else ""),
             "resources": [
                 "catalog",
                 {"name": "meta", "types": ["movie", "series"], "idPrefixes": ["emby:"]},
@@ -285,6 +294,10 @@ class EmbyService:
     async def catalog(
         self, kind: str, catalog_id: str, extra: dict[str, str]
     ) -> list[dict[str, Any]]:
+        if catalog_id in MESE_CATALOGS:
+            if self.mese is None or MESE_CATALOGS[catalog_id] != kind:
+                return []
+            return await self.mese.catalog(kind, extra)
         library = LIBRARY_RE.match(catalog_id)
         legacy = CATALOG_RE.match(catalog_id)
         if library:

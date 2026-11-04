@@ -25,7 +25,7 @@ flowchart LR
 | **StremThru** | Feltölti a `.torrent`-et a TorBoxra | csak belül, kívülről nem látszik |
 | **TMDB-addon** | Magyar filmcímek, leírások, katalógusok a Stremióban | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **LeLibrary** | A TorBoxon lévő filmek és sorozatok poszterekkel a Stremio kezdőlapján, a sorozatrészek egymás után | nyilvános HTTPS-cím (Tailscale Funnel) |
-| **Emby-könyvtár** | A saját otthoni Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján, lejátszás közvetlenül az Embyről | nyilvános HTTPS-cím (Tailscale Funnel), titkos linkkel |
+| **Emby-könyvtár** | A saját otthoni Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján, lejátszás közvetlenül az Embyről; gyerekbarát „Mesék” sorok a TMDB-ből | nyilvános HTTPS-cím (Tailscale Funnel), titkos linkkel |
 | **Magyar feliratok** | Felirataddon a feliratok.eu-hoz, javított ékezetekkel, a kiadáshoz illő sorrendben | nyilvános HTTPS-cím (Tailscale Funnel) |
 | **Állapotfigyelő** | Gatus: mi működik, mi nem; hiba esetén értesítés a telefonra (ntfy) | csak a saját tailnetedről |
 | **Mentés** | Backrest: titkosított napi mentés felhőtárhelyre | csak a saját tailnetedről |

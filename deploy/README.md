@@ -231,7 +231,7 @@ docker compose exec feliratok python -m app.selftest tt0944947:1:1   # sorozat: 
 
 ### 5.7 Emby-könyvtár – saját Emby-szerverek a Stremióban
 
-Saját bővítmény, amely egy vagy több (legfeljebb 3) **otthoni Emby-szerver** tartalmát hozza a Stremióba:
+Saját bővítmény, amely egy vagy több (legfeljebb 3) **otthoni Emby-szerver** tartalmát hozza a Stremióba (és a gyerekbarát **Mesék** sorokat, lásd lent):
 
 - **Egy kezdőlapi sor minden Emby-könyvtárnak**, ahogy az Embyben vannak a mappák (pl. *„Saját: Filmek”*, *„Saját: Mesék”*, *„Saját: Sorozatok”*), plakátokkal, a legutóbb hozzáadottal kezdve. A zene, a fotók és a gyűjtemények kimaradnak, az üres könyvtárak nem jelennek meg.
 - Egy sor **„Összes”** nézetében a legördülő listából **műfaj** szerint szűrhetsz, vagy **ABC / évszám szerinti** sorrendet választhatsz. Keresés is van.
@@ -275,6 +275,23 @@ A `.env` módosítása után: `cd ~/stremhu-source/deploy && docker compose up -
 
 Az Emby-könyvtárlistát óránként frissíti (új mappa legfeljebb egy óra múlva jelenik meg). Ha az Embyben **új könyvtár** keletkezik, a Stremióban a bővítményt egyszer **újra kell telepíteni** (Addons → Emby-könyvtár → *Uninstall*, majd a linkkel újra *Install*), mert a Stremio a sorok listáját telepítéskor jegyzi meg. Ha egy Emby épp nem érhető el, a sorai megmaradnak (az utoljára ismert lista szerint), csak üresek.
 
+#### Mesék – gyerekbarát sorok a kezdőlapon
+
+Az Emby-könyvtár bővítmény két **„Mesék”** sort is ad (egy filmet és egy sorozatot) a TMDB-ből – ehhez nem kell Emby, csak a `.env`-ben már meglévő `TMDB_API_KEY` (ugyanaz, mint a TMDB-addoné).
+
+- **Filmek:** animációs **és** családi, amerikai korhatár-besorolás **G vagy PG**; horror, thriller, bűnügyi és háborús film nem kerül bele.
+- **Sorozatok:** animációs **és** gyerek (a TMDB *Kids* műfaja); bűnügyi, háborús, hír-, valóság- és talkshow nem kerül bele.
+- **Magyar cím és plakát**, ahol a TMDB-ben van; rákattintva a megszokott magyar adatlap nyílik (a saját TMDB-addonból).
+- A lejátszás a megszokott módon megy: az AIOStreams (StremHU/TorBox) keres hozzá forrást, és ha valamelyik Embyn megvan, az is megjelenik.
+- A sor **„Összes”** nézetében a legördülő listából: **Népszerű** (alap), **Kicsiknek** (csak G besorolású filmek), **Legújabb**, **Legjobbak**, **Magyar** (magyar gyártású animáció – a régi magyar meséknek többnyire nincs amerikai besorolása, ezért ott az nem szűrő).
+- A listákat 6 óránként frissíti. Ha a TMDB épp nem érhető el, az utoljára ismert lista marad.
+
+Ellenőrzés: a `docker compose exec emby python -m app.selftest` a végén kiírja, hány cím van a két sorban (*„=== Mesék (TMDB)”*). Ha `TMDB_API_KEY` nincs megadva, a Mesék sorok egyszerűen nem jelennek meg.
+
+**Első bekapcsoláskor** a bővítménynek új sorai lesznek, ezeket a Stremio magától nem veszi észre:
+- ha az Emby-könyvtár az **AIOStreamsen keresztül** van bekötve: az AIOStreams beállítóoldalán a katalógusok között kapcsold be (és tetszés szerint told előre) a két *Mesék* sort, mentsd, majd a Stremióban az **AIOStreamst** egyszer telepítsd újra;
+- ha **közvetlenül a Stremióban** van: az **Emby-könyvtárat** telepítsd újra (Addons → Emby-könyvtár → *Uninstall*, majd a linkkel újra *Install*).
+
 ## 6. Címek és jelszavak
 
 | Mi | Cím | Belépés | Hol van a jelszó? |
@@ -309,7 +326,7 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `TAILNET` | a tailnet neve, pl. `valami-nev.ts.net` |
 | `TS_AUTHKEY` | Tailscale auth key (csak az első belépéshez kell) |
 | `STREMHU_HOSTNAME`, `AIOSTREAMS_HOSTNAME`, `TMDB_HOSTNAME`, `PULT_HOSTNAME` | a gépek neve a tailneten (ebből lesz a cím) |
-| `TMDB_API_KEY`, `FANART_API_KEY` | a TMDB-addon kulcsai |
+| `TMDB_API_KEY`, `FANART_API_KEY` | a TMDB-addon kulcsai (a `TMDB_API_KEY`-t a Mesék sorok is használják, [5.7](#57-emby-könyvtár--saját-emby-szerverek-a-stremióban)) |
 | `LELIBRARY_HOSTNAME`, `FELIRAT_HOSTNAME` | a LeLibrary és a felirataddon gépneve a tailneten |
 | `EMBY_HOSTNAME`, `EMBY_ADDON_SECRET` | az Emby-könyvtár gépneve a tailneten és a telepítési link titkos része (generált; ha megváltoztatod, a linket mindenhol cserélni kell) |
 | `EMBY1_NEV`, `EMBY1_URL`, `EMBY1_FELHASZNALO`, `EMBY1_JELSZO` (és `EMBY2_…`, `EMBY3_…`) | az Emby-szerverek ([5.7](#57-emby-könyvtár--saját-emby-szerverek-a-stremióban)) |

@@ -1,19 +1,66 @@
 """Önteszt a szerveren: docker compose exec emby python -m app.selftest
 
 Minden beállított Emby-szerverre belép, megszámolja a filmeket és a sorozatokat,
-majd kiírja a Stremio-telepítési linket.
+lekéri a Mesék sorokat a TMDB-ből, majd kiírja a Stremio-telepítési linket.
 """
 
 import asyncio
 import sys
 
-from app.config import load_settings
+from app.cache import Cache
+from app.config import Settings, load_settings
 from app.emby import EmbyClient, EmbyError
+from app.mese import (
+    OPTIONS,
+    TMDB_KINDS,
+    MeseCatalog,
+    TmdbClient,
+    TmdbError,
+    discover_params,
+)
 from app.service import LIBRARY_TYPES, SKIPPED_LIBRARIES
+
+
+async def check_mese(settings: Settings) -> bool:
+    print("\n=== Mesék (TMDB)")
+    if not settings.tmdb_api_key:
+        print("  Nincs TMDB_API_KEY a .env-ben – a Mesék sorok nem jelennek meg.")
+        return True
+    client = TmdbClient(settings.tmdb_api_key, settings.timeout)
+    mese = MeseCatalog(client, Cache(settings.data_dir / "cache.sqlite"))
+    ok = True
+    try:
+        try:
+            await client.get("/configuration")
+        except TmdbError as error:
+            print(f"  HIBA: a TMDB nem érhető el: {error}")
+            return False
+        for kind, label in (("movie", "Filmek"), ("series", "Sorozatok")):
+            try:
+                metas = await mese.catalog(kind, {})
+                sample = ", ".join(meta["name"] for meta in metas[:5])
+                print(f"  {label}: {len(metas)} cím az első oldalon, pl. {sample}")
+                if not metas:
+                    ok = False
+                counts = []
+                for option in OPTIONS[kind][1:]:
+                    params = discover_params(kind, option, mese.today())
+                    data = await client.get(
+                        f"/discover/{TMDB_KINDS[kind]}", {**params, "page": "1"}
+                    )
+                    counts.append(f"{option}: {data.get('total_results', 0)}")
+                print("    szűrők (találat a TMDB-ben): " + ", ".join(counts))
+            except TmdbError as error:
+                print(f"  HIBA ({label}): {error}")
+                ok = False
+    finally:
+        await client.close()
+    return ok
 
 
 async def check() -> int:
     settings = load_settings()
+    failures = 0
     if not settings.servers:
         print(
             "Nincs beállítva Emby-szerver. Töltsd ki a .env-ben: EMBY1_NEV, EMBY1_URL,"
@@ -21,8 +68,6 @@ async def check() -> int:
         print(
             "EMBY1_FELHASZNALO, EMBY1_JELSZO (és ugyanígy EMBY2_...), majd: sh install.sh"
         )
-        return 1
-    failures = 0
     for server in settings.servers:
         client = EmbyClient(server, settings.timeout)
         print(f"\n=== {server.name} ({server.url})")
@@ -57,6 +102,8 @@ async def check() -> int:
             print(f"  HIBA: {error}")
         finally:
             await client.close()
+    if not await check_mese(settings):
+        failures += 1
     print()
     if not settings.secret_ok:
         print("HIBA: hiányzik az EMBY_ADDON_SECRET – futtasd az install.sh-t.")

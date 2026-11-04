@@ -19,9 +19,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from app.cache import Cache
 from app.config import VERSION, Settings, load_settings
 from app.emby import EmbyClient
+from app.mese import MeseCatalog, TmdbClient
 from app.service import EmbyService, parse_extra
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+# Az httpx minden kérést kiírna a teljes címmel – abban titkos kulcs is lehet.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("emby")
 
 LANDING = """<!doctype html><html lang="hu"><meta charset="utf-8">
@@ -29,7 +32,7 @@ LANDING = """<!doctype html><html lang="hu"><meta charset="utf-8">
 <title>Emby-könyvtár</title>
 <body style="font-family:system-ui;max-width:560px;margin:10vh auto;padding:0 16px;line-height:1.5">
 <h2>Emby-könyvtár</h2>
-<p>Stremio-bővítmény: a saját Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján.</p>
+<p>Stremio-bővítmény: a saját Emby-szerverek filmjei és sorozatai, valamint gyerekbarát mesék a Stremio kezdőlapján.</p>
 <p>A telepítési link titkos; a szerveren ez a parancs írja ki:<br>
 <code>docker compose exec emby python -m app.selftest</code></p>
 </body></html>"""
@@ -40,6 +43,7 @@ TransportFactory = Callable[[int], httpx.AsyncBaseTransport | None]
 def create_app(
     settings: Settings | None = None,
     transport_for: TransportFactory | None = None,
+    tmdb_transport: httpx.AsyncBaseTransport | None = None,
 ) -> FastAPI:
     settings = settings or load_settings()
 
@@ -54,7 +58,13 @@ def create_app(
             for server in settings.servers
         }
         cache = Cache(settings.data_dir / "cache.sqlite")
-        app.state.service = EmbyService(settings, cache, clients)
+        tmdb = (
+            TmdbClient(settings.tmdb_api_key, settings.timeout, tmdb_transport)
+            if settings.tmdb_api_key
+            else None
+        )
+        mese = MeseCatalog(tmdb, cache) if tmdb else None
+        app.state.service = EmbyService(settings, cache, clients, mese)
         if not settings.secret_ok:
             logger.error(
                 "Az EMBY_ADDON_SECRET hiányzik vagy túl rövid – a bővítmény nem szolgál ki semmit. "
@@ -62,11 +72,15 @@ def create_app(
             )
         if not clients:
             logger.warning("Nincs beállítva Emby-szerver (EMBY1_URL ... a .env-ben).")
+        if tmdb is None:
+            logger.warning("Nincs TMDB_API_KEY – a Mesék sorok nem jelennek meg.")
         try:
             yield
         finally:
             for client in clients.values():
                 await client.close()
+            if tmdb is not None:
+                await tmdb.close()
 
     app = FastAPI(
         title="Emby-könyvtár",
@@ -92,6 +106,7 @@ def create_app(
             "status": "ok",
             "version": VERSION,
             "servers": len(settings.servers),
+            "mese": bool(settings.tmdb_api_key),
             "secret": settings.secret_ok,
         }
 

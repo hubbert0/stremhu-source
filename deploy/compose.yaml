@@ -269,7 +269,8 @@ services:
   # --------------------------------------------------------- Emby-könyvtár
   # A saját Emby-szerverek filmjei és sorozatai a Stremio kezdőlapján, a
   # lejátszás közvetlenül az Embyről megy. Beállítás: a .env EMBY1_..., EMBY2_...
-  # sorai (README 5.7). A telepítési link titkos (EMBY_ADDON_SECRET), kiírja:
+  # sorai (README 5.7). Ugyanez adja a „Mesék” sorokat is (a TMDB-addon
+  # kulcsával). A telepítési link titkos (EMBY_ADDON_SECRET), kiírja:
   #   docker compose exec emby python -m app.selftest
   ts-emby:
     image: tailscale/tailscale:latest
@@ -294,6 +295,7 @@ services:
       - TZ=Europe/Budapest
       - EMBY_BASE_URL=https://${EMBY_HOSTNAME:-emby}.${TAILNET}
       - EMBY_ADDON_SECRET=${EMBY_ADDON_SECRET:-}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
       - EMBY1_NEV=${EMBY1_NEV:-}
       - EMBY1_URL=${EMBY1_URL:-}
       - EMBY1_FELHASZNALO=${EMBY1_FELHASZNALO:-}
