@@ -66,13 +66,31 @@ BADGES = [
      [("FORRÁS: ", WHITE), ("MEDIAFUSION", BLUE)], CHIP),
     ("forras-stremthru", "forras", "StremThru", r"Forrás: (?:[^:·]+· )?StremThru Torz",
      [("FORRÁS: ", WHITE), ("STREMTHRU", BLUE)], CHIP),
+    # Emby: a Nuvio saját Emby-kapcsolata („Emby · hEmby”) és az Emby-könyvtár
+    # bővítmény („Emby · Saját”) is így nevezi a forrást.
+    ("forras-emby", "forras", "Emby", r"\bEmby · \S",
+     [("FORRÁS: ", WHITE), ("EMBY", GREEN)], CHIP),
     # A hang nyelve biztos (nCore-kategória vagy bemért fájl): „🔊 Hang: …”.
     ("hang-magyar", "hang", "Magyar hang", r"Hang:[^:]*🇭🇺 magyar",
      [("HANG: ", WHITE), ("MAGYAR", GREEN)], CHIP),
+    # Csak a fájlnévből tudni, hogy magyar is van benne – lehet, hogy csak felirat.
+    ("nyelv-magyar", "hang", "Magyar? (fájlnév)", r"Nyelv:[^:]*🇭🇺 magyar",
+     [("NYELV: ", WHITE), ("MAGYAR?", ORANGE)], CHIP),
     ("hang-idegen", "hang", "Idegen hang", r"Hang:(?![^:]*(?:🇭🇺 magyar|nem tudni))",
      [("HANG: ", WHITE), ("IDEGEN", ORANGE)], CHIP),
     ("felirat-magyar", "felirat", "Magyar felirat", r"Felirat:[^:]*🇭🇺 magyar",
      [("FELIRAT: ", WHITE), ("MAGYAR", GREEN)], CHIP),
+]
+
+
+# Ugyanazt a képet más szövegre is kirakjuk: (kép, azonosító, csoport, név, minta).
+EXTRA_FILTERS = [
+    # Nuvio Emby-kapcsolata: „Hungarian AC3 stereo”
+    ("hang-magyar", "hang-magyar-emby", "hang", "Magyar hang (Emby)",
+     r"(?i)\bHungarian [A-Z0-9+.-]+ (?:stereo|mono|\d\.\d)"),
+    # Emby-könyvtár bővítmény: „🔊 hun, eng”
+    ("hang-magyar", "hang-magyar-emby-addon", "hang", "Magyar hang (Emby-könyvtár)",
+     r"🔊 (?:[a-z]{3}, )*hun\b"),
 ]
 
 
@@ -114,6 +132,9 @@ def main() -> None:
                 "borderColor": chip,
             }
         )
+    for image_id, badge_id, group, name, pattern in EXTRA_FILTERS:
+        source = next(f for f in filters if f["id"] == image_id)
+        filters.append({**source, "id": badge_id, "groupId": group, "name": name, "pattern": pattern})
     payload = {"filters": filters, "groups": GROUPS}
     (HERE / "jelvenyek.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

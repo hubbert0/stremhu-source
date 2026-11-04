@@ -89,11 +89,33 @@
       "borderColor": "#0A0C0C"
     },
     {
+      "id": "forras-emby",
+      "groupId": "forras",
+      "name": "Emby",
+      "pattern": "\\bEmby · \\S",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-emby-v2.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
       "id": "hang-magyar",
       "groupId": "hang",
       "name": "Magyar hang",
       "pattern": "Hang:[^:]*🇭🇺 magyar",
       "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/hang-magyar-v2.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "nyelv-magyar",
+      "groupId": "hang",
+      "name": "Magyar? (fájlnév)",
+      "pattern": "Nyelv:[^:]*🇭🇺 magyar",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/nyelv-magyar-v2.png",
       "isEnabled": true,
       "tagColor": "#0A0C0C",
       "tagStyle": "filled",
@@ -116,6 +138,28 @@
       "name": "Magyar felirat",
       "pattern": "Felirat:[^:]*🇭🇺 magyar",
       "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/felirat-magyar-v2.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "hang-magyar-emby",
+      "groupId": "hang",
+      "name": "Magyar hang (Emby)",
+      "pattern": "(?i)\\bHungarian [A-Z0-9+.-]+ (?:stereo|mono|\\d\\.\\d)",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/hang-magyar-v2.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "hang-magyar-emby-addon",
+      "groupId": "hang",
+      "name": "Magyar hang (Emby-könyvtár)",
+      "pattern": "🔊 (?:[a-z]{3}, )*hun\\b",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/hang-magyar-v2.png",
       "isEnabled": true,
       "tagColor": "#0A0C0C",
       "tagStyle": "filled",

@@ -2,7 +2,7 @@
 
 Fekete címkék a Nuvio forráskártyáin, a Nuvio saját „MÉRET” jelzője mellett:
 **TORBOX · AZONNAL / LETÖLTÉS** (színes), **FORRÁS: TORBOX / NCORE / TORRENTIO / COMET / MEDIAFUSION / STREMTHRU**, **HANG: MAGYAR / IDEGEN**,
-**FELIRAT: MAGYAR**.
+**FELIRAT: MAGYAR**, **NYELV: MAGYAR?** (csak a fájlnév szerint), **FORRÁS: EMBY**.
 
 A Nuvio a forráskártya szövegében keres, ezért a jelvények az AIOStreams magyar
 formátumához készültek (`📡 Forrás: …`, `🔊 Hang: 🇭🇺 magyar …`, `💬 Felirat: …` sorok).
