@@ -1,3 +1,4 @@
+import re
 from urllib.parse import quote
 
 from app.common.schemas.internal import SeriesInfo
@@ -26,6 +27,22 @@ _LANGUAGE_NAMES = {
     MediaAttributeKey.ENG: "English",
 }
 
+# A külföldi kategóriás torrent (pl. nCore HD/EN) hangja az eredeti nyelv:
+# magyar hangú kiadás csak magyar kategóriába kerülhet.
+_ORIGINAL_LANGUAGE = "Original"
+
+# A „HUN.SUB”, „HUNSUB”, „magyar felirat” jelölés feliratot jelent, nem hangot.
+_SUBTITLE_TOKENS = {
+    "Hungarian": re.compile(
+        r"\b(?:hun|hungarian|magyar)[-_. ]?(?:subs?|subbed|felirat(?:os|tal)?)\b",
+        re.IGNORECASE,
+    ),
+    "English": re.compile(
+        r"\b(?:eng|english|angol)[-_. ]?(?:subs?|subbed|felirat(?:os|tal)?)\b",
+        re.IGNORECASE,
+    ),
+}
+
 
 def contains_episode(source: TorrentSource, series: SeriesInfo | None) -> bool:
     """Csak azokat a torrenteket tartjuk meg, amikben tényleg benne van a kért epizód."""
@@ -44,12 +61,28 @@ def _build_magnet(info_hash: str, name: str) -> str:
     return f"magnet:?xt=urn:btih:{info_hash}&dn={quote(name)}"
 
 
+def _subtitle_names(source: TorrentSource) -> list[str]:
+    """A torrent nevében jelölt feliratnyelvek (pl. HUN.SUB)."""
+    name = source.torrent_file.info.name
+    return [
+        language
+        for language, pattern in _SUBTITLE_TOKENS.items()
+        if pattern.search(name)
+    ]
+
+
 def _language_names(source: TorrentSource) -> list[str]:
+    """A hang nyelvei (a kliensek ezt hangként értik, a feliratot külön kapják)."""
     names: list[str] = []
+
+    # A feliratjelölést kivesszük, hogy a „HUN.SUB” ne számítson magyar hangnak.
+    audio_name = source.torrent_file.info.name
+    for pattern in _SUBTITLE_TOKENS.values():
+        audio_name = pattern.sub(" ", audio_name)
 
     # A torrent nevéből kiolvasott nyelv megbízható.
     for attribute in parse_torrent_name(
-        name=source.torrent_file.info.name,
+        name=audio_name,
         use_fallbacks=False,
     ):
         if attribute.preference_id != PreferenceKey.LANGUAGE:
@@ -62,13 +95,17 @@ def _language_names(source: TorrentSource) -> list[str]:
     # Ha a tracker magyar kategóriájából töltöttük le (pl HD/HUN)
     # akkor feltételezzük, hogy van magyar hang,
     # akkor is, ha véletlen kimaradt a fájlnévből.
-    for attribute in source.indexer_torrent.media_attributes:
-        if attribute.id != MediaAttributeKey.HUN:
-            continue
-
+    category_ids = {
+        attribute.id for attribute in source.indexer_torrent.media_attributes
+    }
+    if MediaAttributeKey.HUN in category_ids:
         name = _LANGUAGE_NAMES[MediaAttributeKey.HUN]
         if name not in names:
             names.append(name)
+    elif MediaAttributeKey.ENG in category_ids and not names:
+        # Külföldi kategória, a névben nincs nyelv: biztosan nincs magyar hang,
+        # a film eredeti nyelvén szól.
+        names.append(_ORIGINAL_LANGUAGE)
 
     return names
 
@@ -105,6 +142,10 @@ def _attributes(
     attributes.extend(
         TorznabAttr(name=TorznabAttrName.LANGUAGE, value=language)
         for language in _language_names(source)
+    )
+    attributes.extend(
+        TorznabAttr(name=TorznabAttrName.SUBS, value=language)
+        for language in _subtitle_names(source)
     )
 
     return attributes

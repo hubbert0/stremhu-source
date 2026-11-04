@@ -40,6 +40,7 @@ class TorznabAttrName:
     INFOHASH = "infohash"
     MAGNET_URL = "magneturl"
     LANGUAGE = "language"
+    SUBS = "subs"
     IMDB = "imdb"
     IMDB_ID = "imdbid"
 
