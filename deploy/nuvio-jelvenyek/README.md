@@ -1,7 +1,7 @@
 # Nuvio-jelvények (Fusion-stílus)
 
 Fekete címkék a Nuvio forráskártyáin, a Nuvio saját „MÉRET” jelzője mellett:
-**FORRÁS: NCORE / TORRENTIO / COMET / MEDIAFUSION / STREMTHRU**, **HANG: MAGYAR / IDEGEN**,
+**TORBOX · AZONNAL / LETÖLTÉS** (színes), **FORRÁS: TORBOX / NCORE / TORRENTIO / COMET / MEDIAFUSION / STREMTHRU**, **HANG: MAGYAR / IDEGEN**,
 **FELIRAT: MAGYAR**.
 
 A Nuvio a forráskártya szövegében keres, ezért a jelvények az AIOStreams magyar
