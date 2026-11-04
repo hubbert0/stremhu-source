@@ -657,6 +657,7 @@ Mindegyik a `~/stremhu-source/deploy` mappában (`cd ~/stremhu-source/deploy`):
 | `df -h /` | szabad lemezhely |
 | `docker image prune -f` | régi, nem használt image-ek törlése |
 | `tail -n 30 /var/log/stremhu-karbantartas.log` | az önjavító figyelő és a heti frissítés naplója |
+| `python3 scripts/stremio_nuvio.py` | a Stremio-fiók kiegészítőit, könyvtárát, megnézett és félbehagyott tételeit átmásolja egy Nuvio-fiókba (a belépési adatokat bekéri, sehova nem menti; az Emby-könyvtár – a Mesék sorokkal – kerül az élre). `--proba`: csak megmutatja, mit vinne át |
 
 ## 15. Futtatás otthoni Windows-gépen
 
