@@ -1,0 +1,112 @@
+{
+  "filters": [
+    {
+      "id": "forras-ncore",
+      "groupId": "forras",
+      "name": "nCore",
+      "pattern": "Forrás: nCore\\b",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-ncore.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "forras-torrentio",
+      "groupId": "forras",
+      "name": "Torrentio",
+      "pattern": "Forrás: (?:[^:·]+· )?Torrentio",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-torrentio.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "forras-comet",
+      "groupId": "forras",
+      "name": "Comet",
+      "pattern": "Forrás: (?:[^:·]+· )?Comet",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-comet.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "forras-mediafusion",
+      "groupId": "forras",
+      "name": "MediaFusion",
+      "pattern": "Forrás: (?:[^:·]+· )?MediaFusion",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-mediafusion.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "forras-stremthru",
+      "groupId": "forras",
+      "name": "StremThru",
+      "pattern": "Forrás: (?:[^:·]+· )?StremThru Torz",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/forras-stremthru.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "hang-magyar",
+      "groupId": "hang",
+      "name": "Magyar hang",
+      "pattern": "Hang:[^:]*🇭🇺 magyar",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/hang-magyar.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "hang-idegen",
+      "groupId": "hang",
+      "name": "Idegen hang",
+      "pattern": "Hang:(?![^:]*(?:🇭🇺 magyar|nem tudni))",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/hang-idegen.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    },
+    {
+      "id": "felirat-magyar",
+      "groupId": "felirat",
+      "name": "Magyar felirat",
+      "pattern": "Felirat:[^:]*🇭🇺 magyar",
+      "imageURL": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-jelvenyek/felirat-magyar.png",
+      "isEnabled": true,
+      "tagColor": "#0A0C0C",
+      "tagStyle": "filled",
+      "borderColor": "#0A0C0C"
+    }
+  ],
+  "groups": [
+    {
+      "id": "forras",
+      "name": "Forrás",
+      "color": "#60A5FA",
+      "isExpanded": true
+    },
+    {
+      "id": "hang",
+      "name": "Hang",
+      "color": "#4ADE80",
+      "isExpanded": true
+    },
+    {
+      "id": "felirat",
+      "name": "Felirat",
+      "color": "#4ADE80",
+      "isExpanded": true
+    }
+  ]
+}
