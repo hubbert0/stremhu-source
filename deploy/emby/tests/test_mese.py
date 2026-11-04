@@ -16,6 +16,7 @@ from app.main import create_app
 from app.mese import discover_params
 
 RAW_PER_KIND = 140  # 7 TMDB-oldal
+JAPANESE = {2: "となりのトトロ", 1002: "ドラえもん"}
 
 
 def has_imdb(tmdb_id: int) -> bool:
@@ -72,6 +73,16 @@ class FakeTmdb:
                     result.update(
                         {"name": f"Sorozat {tmdb_id}", "first_air_date": "2018-10-01"}
                     )
+                if tmdb_id in JAPANESE:
+                    # Nincs magyar fordítás: a TMDB az eredeti (japán) címet adja.
+                    title = "title" if kind == "movie" else "name"
+                    result.update(
+                        {
+                            title: JAPANESE[tmdb_id],
+                            f"original_{title}": JAPANESE[tmdb_id],
+                            "original_language": "ja",
+                        }
+                    )
                 results.append(result)
             return httpx.Response(
                 200,
@@ -82,13 +93,27 @@ class FakeTmdb:
                     "total_results": RAW_PER_KIND,
                 },
             )
-        if path.endswith("/external_ids"):
-            tmdb_id = int(path.split("/")[3])
+        if path.startswith(("/3/movie/", "/3/tv/")):
+            kind, tmdb_id = path.split("/")[2], int(path.split("/")[3])
             self.lookups.append(path)
+            assert params["language"] == "en-US"
             if tmdb_id == 13:
                 return httpx.Response(404)
             imdb = f"tt{9000000 + tmdb_id}" if has_imdb(tmdb_id) else None
-            return httpx.Response(200, json={"id": tmdb_id, "imdb_id": imdb})
+            if kind == "movie":
+                return httpx.Response(
+                    200,
+                    json={"id": tmdb_id, "imdb_id": imdb, "title": f"Movie {tmdb_id}"},
+                )
+            assert params["append_to_response"] == "external_ids"
+            return httpx.Response(
+                200,
+                json={
+                    "id": tmdb_id,
+                    "name": f"Show {tmdb_id}",
+                    "external_ids": {"imdb_id": imdb},
+                },
+            )
         return httpx.Response(404)
 
 
@@ -294,7 +319,7 @@ def test_keeps_last_list_when_tmdb_down(tmp_path: Path, tmdb: FakeTmdb) -> None:
     tmdb.down = True
     # Új indítás, a TMDB-oldalak gyorsítótárát kiürítjük.
     db = sqlite3.connect(tmp_path / "cache.sqlite")
-    db.execute("DELETE FROM cache WHERE key LIKE 'mese:%'")
+    db.execute("DELETE FROM cache WHERE key LIKE 'mese2:%'")
     db.commit()
     db.close()
     with make_client(tmp_path, tmdb) as client:
@@ -322,3 +347,17 @@ def test_v4_token_uses_bearer_header(tmp_path: Path, tmdb: FakeTmdb) -> None:
         catalog(client, "movie")
     assert "api_key" not in tmdb.discover[0]
     assert tmdb.headers[0]["authorization"] == f"Bearer {token}"
+
+
+def test_untranslated_title_falls_back_to_english(
+    tmp_path: Path, tmdb: FakeTmdb
+) -> None:
+    with make_client(tmp_path, tmdb) as client:
+        movies = catalog(client, "movie")
+        series = catalog(client, "series")
+    names = {m["id"]: m["name"] for m in movies + series}
+    assert names["tt9000002"] == "Movie 2"
+    assert names["tt9001002"] == "Show 1002"
+    # A lefordított címek maradnak.
+    assert names["tt9000001"] == "Mese 1"
+    assert names["tt9001001"] == "Sorozat 1001"

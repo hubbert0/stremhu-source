@@ -51,6 +51,8 @@ PAGE_RETRY_TTL = 600
 LAST_TTL = 14 * 24 * 3600
 IMDB_TTL = 30 * 24 * 3600
 IMDB_MISS_TTL = 3 * 24 * 3600
+# A gyorsítótár kulcsainak változata: ha a tárolt adat formája változik, emelni kell.
+CACHE_VERSION = 2
 
 IMDB_RE = re.compile(r"^tt\d{1,10}$")
 IMAGE_PATH_RE = re.compile(r"^/[A-Za-z0-9_.-]{1,100}$")
@@ -186,20 +188,30 @@ def image_url(path: object, size: str) -> str | None:
     return f"{IMAGE_BASE}/{size}{text}"
 
 
-def preview(kind: str, result: dict[str, Any], imdb: str) -> dict[str, Any] | None:
+def preview(
+    kind: str, result: dict[str, Any], imdb: str, english: str = ""
+) -> dict[str, Any] | None:
     poster = image_url(result.get("poster_path"), "w342")
     if poster is None:
         return None
     if kind == "movie":
-        name = result.get("title") or result.get("original_title")
+        name, original = result.get("title"), result.get("original_title")
         date = str(result.get("release_date") or "")
     else:
-        name = result.get("name") or result.get("original_name")
+        name, original = result.get("name"), result.get("original_name")
         date = str(result.get("first_air_date") or "")
+    # Magyar fordítás híján a TMDB az eredeti címet adja (pl. japánul):
+    # akkor inkább az angol cím.
+    if (
+        english
+        and result.get("original_language") != "hu"
+        and name in (None, "", original)
+    ):
+        name = english
     meta: dict[str, Any] = {
         "id": imdb,
         "type": kind,
-        "name": str(name or "?"),
+        "name": str(name or original or "?"),
         "poster": poster,
         "posterShape": "poster",
     }
@@ -250,7 +262,7 @@ class MeseCatalog:
             skip = max(0, int(extra.get("skip", "0")))
         except ValueError:
             skip = 0
-        last_key = f"mese-last:{kind}:{option}:{skip}"
+        last_key = f"mese-last{CACHE_VERSION}:{kind}:{option}:{skip}"
         params = discover_params(kind, option, self.today())
         try:
             metas = await self._collect(kind, params, skip + PAGE_SIZE)
@@ -267,7 +279,9 @@ class MeseCatalog:
         self, kind: str, params: dict[str, str], needed: int
     ) -> list[dict[str, Any]]:
         """A sor elemei sorban, amíg `needed` darab össze nem jön."""
-        key_base = f"mese:{kind}:" + urllib.parse.urlencode(sorted(params.items()))
+        key_base = f"mese{CACHE_VERSION}:{kind}:" + urllib.parse.urlencode(
+            sorted(params.items())
+        )
         metas: list[dict[str, Any]] = []
         seen: set[str] = set()
 
@@ -309,12 +323,12 @@ class MeseCatalog:
             and image_url(result.get("poster_path"), "w342")
         ]
         lookups = await asyncio.gather(
-            *(self._imdb(kind, result["id"]) for result in results)
+            *(self._details(kind, result["id"]) for result in results)
         )
         metas: list[dict[str, Any]] = []
-        for result, (imdb, _) in zip(results, lookups, strict=True):
-            if imdb:
-                meta = preview(kind, result, imdb)
+        for result, (info, _) in zip(results, lookups, strict=True):
+            if info:
+                meta = preview(kind, result, info["imdb"], info["en"])
                 if meta:
                     metas.append(meta)
         try:
@@ -330,26 +344,40 @@ class MeseCatalog:
         )
         return total, metas
 
-    async def _imdb(self, kind: str, tmdb_id: int) -> tuple[str | None, bool]:
-        """(IMDb-azonosító vagy None, sikerült-e a lekérdezés)."""
-        key = f"mese-imdb:{kind}:{tmdb_id}"
+    async def _details(
+        self, kind: str, tmdb_id: int
+    ) -> tuple[dict[str, str] | None, bool]:
+        """({"imdb": IMDb-azonosító, "en": angol cím} vagy None, ha nincs
+        IMDb-azonosító; és hogy sikerült-e a lekérdezés)."""
+        key = f"mese-info:{kind}:{tmdb_id}"
         cached = self.cache.get_json(key)
-        if cached is not None:
-            return (str(cached) or None), True
+        if isinstance(cached, dict):
+            return (cached if cached.get("imdb") else None), True
+        params = {"language": "en-US"}
+        if kind == "series":
+            params["append_to_response"] = "external_ids"
         try:
-            data = await self.client.get(f"/{TMDB_KINDS[kind]}/{tmdb_id}/external_ids")
+            data = await self.client.get(f"/{TMDB_KINDS[kind]}/{tmdb_id}", params)
         except TmdbError as error:
             if error.status != 404:
                 logger.info(
-                    "Mesék: az IMDb-azonosító nem kérhető le (%s %s): %s",
+                    "Mesék: az adatok nem kérhetők le (%s %s): %s",
                     kind,
                     tmdb_id,
                     error,
                 )
                 return None, False
             data = {}
-        imdb = str(data.get("imdb_id") or "") if isinstance(data, dict) else ""
-        if not IMDB_RE.match(imdb):
-            imdb = ""
-        self.cache.set_json(key, imdb, IMDB_TTL if imdb else IMDB_MISS_TTL)
-        return (imdb or None), True
+        if not isinstance(data, dict):
+            data = {}
+        if kind == "movie":
+            imdb, english = data.get("imdb_id"), data.get("title")
+        else:
+            external = data.get("external_ids")
+            imdb = external.get("imdb_id") if isinstance(external, dict) else None
+            english = data.get("name")
+        info = {"imdb": str(imdb or ""), "en": str(english or "")}
+        if not IMDB_RE.match(info["imdb"]):
+            info["imdb"] = ""
+        self.cache.set_json(key, info, IMDB_TTL if info["imdb"] else IMDB_MISS_TTL)
+        return (info if info["imdb"] else None), True
