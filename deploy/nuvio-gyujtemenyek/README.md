@@ -23,4 +23,4 @@ között. Ha a címek angolul jelennek meg: Beállítások → Integrációk →
 adatbővítés → Nyelv → magyar.
 
 A csempeképek egy közösségi Nuvio-csomagból származnak (külső tárhelyen);
-a SkyShowtime-nak nincs képe, ott a név látszik.
+a SkyShowtime képe a Fusion Starter Kitből jön.
