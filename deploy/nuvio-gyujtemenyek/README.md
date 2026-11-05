@@ -18,10 +18,11 @@ Színház és musical.
 - **Szolgáltatók** – négy sor: Filmek, Sorozatok, Mesefilmek, Mesesorozatok –
   ami **Magyarországon** épp elérhető az adott szolgáltatón, népszerűség
   szerint.
-- **Színház és musical** (a BroadwayHD-féle tartalom) – felvett színházi
-  előadások (TMDB-kulcsszó: filmed theater, stage show), Broadway, musicalfilmek,
-  Broadway- és musicalsorozatok. A BroadwayHD szolgáltató TMDB-azonosítóját nem
-  sikerült megbízhatóan ellenőrizni, ezért ez a csempe kulcsszavakra épül.
+- **Színház és musical** – a BroadwayHD kínálata (szolgáltató-azonosító 554,
+  amerikai kínálat): népszerű, musicalek, színdarabok, családbarát, vígjátékok,
+  romantikus, sorozatok; utána kulcsszavas sorok minden forrásból: felvett
+  színházi előadások (filmed theater, stage show), Broadway, musicalfilmek,
+  Broadway- és musicalsorozatok.
 
 A sor nyugalmi kártyái szürkék, fehér logóval, kijelölve színesek (ezt a
 `focusGifUrl` adja). A SkyShowtime szürke és színes képe is a Fusion Starter
