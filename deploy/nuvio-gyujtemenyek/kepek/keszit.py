@@ -125,6 +125,41 @@ def plain_tile(title: str, code: str) -> Image.Image:
     return img
 
 
+# Kijelöléskor lejátszott animáció (focusGifUrl). A windowsos Nuvio csak
+# többkockás GIF-et játszik le egérrel fölé állva, ezért nem elég egy PNG:
+# a nyugalmi képből rövid áttűnéssel vált a színesre, és azon marad.
+KIT = "https://raw.githubusercontent.com/itsrenoria/fusion-starter-kit/main/resources/widgets/streaming/square/orangebyte/"
+CARD_GRAY = (51, 51, 51, 255)  # a Nuvio sötétszürke kártyája
+FOCUS_GIFS = {
+    # fájlnév: (nyugalmi kép, színes kép, méret)
+    "szinhaz-fokusz.gif": (HERE / "szinhaz.png", HERE / "szinhaz-szines.png", (640, 360)),
+    "skyshowtime-fokusz.gif": (
+        (KIT + "fusion/skyshowtime-square-fusion.png", "skyshowtime-szurke.png"),
+        (KIT + "original/skyshowtime-square.png", "skyshowtime-szines.png"),
+        (480, 480),
+    ),
+}
+
+
+def load(source, size: tuple) -> Image.Image:
+    if isinstance(source, tuple):
+        source = fetch(source[0], SRC / source[1])
+    img = Image.open(source).convert("RGBA").resize(size, Image.LANCZOS)
+    card = Image.new("RGBA", size, CARD_GRAY)
+    card.alpha_composite(img)
+    return card.convert("RGB")
+
+
+def focus_gif(still, color, size: tuple, target: Path) -> None:
+    a, b = load(still, size), load(color, size)
+    steps = 8
+    frames = [Image.blend(a, b, i / (steps - 1)) for i in range(steps)]
+    frames = [f.quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG) for f in frames]
+    # utolsó kocka percekig marad, így a kártya színes marad, amíg kijelölt
+    durations = [45] * (steps - 1) + [600000]
+    frames[0].save(target, save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
+
+
 if __name__ == "__main__":
     for name, (title, subtitle, code, colors) in TILES.items():
         tile(title, subtitle, code, colors).save(HERE / f"{name}.png", optimize=True)
@@ -132,3 +167,6 @@ if __name__ == "__main__":
     for name, (title, code) in PLAIN_TILES.items():
         plain_tile(title, code).save(HERE / f"{name}.png", optimize=True)
         print(f"{name}.png")
+    for name, (still, color, size) in FOCUS_GIFS.items():
+        focus_gif(still, color, size, HERE / name)
+        print(name)
