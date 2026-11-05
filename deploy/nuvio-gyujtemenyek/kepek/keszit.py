@@ -36,6 +36,15 @@ TILES = {
     "natgeo": ("National Geographic", "Sorozatok", "1f9ed", ((255, 202, 40), (191, 54, 12))),
     "curiosity": ("CuriosityStream", "Filmek és sorozatok", "1f4a1", ((0, 188, 212), (40, 53, 147))),
     "magellan": ("MagellanTV", "Filmek és sorozatok", "1f52d", ((255, 112, 67), (106, 27, 154))),
+    # Streamingszolgáltatók sor – a kijelölt (színes) változat
+    "szinhaz-szines": ("Színház és musical", "Broadway, felvett előadások", "1f3ad", ((236, 64, 122), (74, 20, 140))),
+}
+
+# A Streamingszolgáltatók sor nyugalmi kártyái a közösségi csomagban átlátszó
+# hátterű, fehér logós képek (a Nuvio sötétszürke kártyáján). Ugyanilyen stílusú
+# saját kártya: fehér sziluett + fehér felirat, átlátszó háttérrel.
+PLAIN_TILES = {
+    "szinhaz": ("Színház és musical", "1f3ad"),
 }
 
 
@@ -96,7 +105,30 @@ def tile(title: str, subtitle: str, code: str, colors: tuple) -> Image.Image:
     return img.convert("RGB")
 
 
+def plain_tile(title: str, code: str) -> Image.Image:
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    art = Image.open(fetch(EMOJI_URL.format(code), SRC / f"{code}.png")).convert("RGBA")
+    art = art.resize((230, 230), Image.LANCZOS)
+    # fehér sziluett; a sötét részletek (szem, száj) kivágva maradnak
+    lum = art.convert("L").point(lambda v: 255 if v > 95 else 0).filter(ImageFilter.MinFilter(3))
+    alpha = Image.composite(art.getchannel("A").point(lambda a: 255 if a > 128 else a * 2),
+                            Image.new("L", art.size, 0), lum)
+    white = Image.new("RGBA", art.size, (255, 255, 255, 0))
+    white.putalpha(alpha)
+    big = font(70, 900)
+    draw = ImageDraw.Draw(img)
+    text_w = draw.textlength(title, font=big)
+    total = art.height + 24 + 70
+    top = (H - total) // 2
+    img.alpha_composite(white, ((W - art.width) // 2, top))
+    draw.text(((W - text_w) / 2, top + art.height + 14), title, font=big, fill=(255, 255, 255, 255))
+    return img
+
+
 if __name__ == "__main__":
     for name, (title, subtitle, code, colors) in TILES.items():
         tile(title, subtitle, code, colors).save(HERE / f"{name}.png", optimize=True)
+        print(f"{name}.png")
+    for name, (title, code) in PLAIN_TILES.items():
+        plain_tile(title, code).save(HERE / f"{name}.png", optimize=True)
         print(f"{name}.png")
