@@ -299,6 +299,9 @@ def test_series_meta_lists_episodes_without_prior_search(client: TestClient) -> 
     assert meta["name"] == "X-Faktor S14"
     assert [(v["season"], v["episode"]) for v in meta["videos"]] == [(14, 1), (14, 2)]
     assert meta["videos"][1]["id"] == f"{SERIES_ID}:14:2"
+    # Dátum nélkül a Nuvio nem jelöli „UNAVAILABLE”-nek.
+    assert "released" not in meta["videos"][0]
+    assert meta["videos"][0]["available"] is True
 
 
 def test_stream_list_shows_details_and_does_not_upload(

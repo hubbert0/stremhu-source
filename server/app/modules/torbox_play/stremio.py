@@ -12,7 +12,6 @@ Azonosítók:
 - régi forma (még elfogadjuk): ``stremhu-tb:ncore:<torrent_id>[:<fájlindex>]``.
 """
 
-import datetime
 import functools
 import re
 from dataclasses import dataclass
@@ -284,14 +283,15 @@ async def meta(service: TorboxPlayService, kind: str, value: str) -> MetaDetail 
     else:
         for torrent in torrents.values():
             episodes.update((f.season, f.episode) for f in video_files(torrent.info))
-    released = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    # Megjelenési dátumot nem adunk: a Nuvio a jövőbeli (vagy a telefon órájánál
+    # pár másodperccel későbbi) dátumú részt „UNAVAILABLE”-nek jelöli.
     detail.videos = [
         MetaVideo(
             id=f"{own.meta_id}:{season}:{episode}",
             title=f"{first.title} S{season:02d}E{episode:02d}",
             season=season,
             episode=episode,
-            released=released,
+            available=True,
         )
         for season, episode in sorted(episodes)
     ]

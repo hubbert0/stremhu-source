@@ -92,7 +92,11 @@ async def catalog_with_extra(
     return StremioCatalogResponse(metas=metas)
 
 
-@router.get("/meta/{media_type}/{meta_id}.json", response_model=MetaResponse)
+@router.get(
+    "/meta/{media_type}/{meta_id}.json",
+    response_model=MetaResponse,
+    response_model_exclude_none=True,
+)
 async def meta(
     media_type: str, meta_id: str, service: Service, _: User
 ) -> MetaResponse:
