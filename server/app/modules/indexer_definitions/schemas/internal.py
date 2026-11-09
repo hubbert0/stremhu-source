@@ -63,6 +63,20 @@ class IndexerDefinitionSearchHit(BaseModel):
     download_url: str | None = None
 
 
+class IndexerDefinitionRecommendedItem(BaseModel):
+    """Az nCore ajánló oldalának (recommended.php) egy eleme."""
+
+    torrent_id: str
+    name: str
+    section: str  # „film” vagy „sorozat”
+    group: str  # „staff”, „aktiv” (borítós) vagy „nepszeru” (jobb oldali lista)
+    rank: int  # helyezés a csoporton belül (0 = első)
+    poster: str | None = None
+    hungarian: bool | None = None  # zászló (csak a borítós elemeknél)
+    quality: str | None = None  # „HD”, „SD”, „DVD9” … (csak a borítós elemeknél)
+    seeders: int | None = None
+
+
 class IndexerDefinitionFindTorrentsResult(BaseModel):
     torrents: list[IndexerDefinitionTorrent] = []
     next_page: int | None = None

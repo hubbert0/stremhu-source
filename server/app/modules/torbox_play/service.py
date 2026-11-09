@@ -16,6 +16,7 @@ import httpx
 from app.common.logger import logger
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo, parse_torrent_info
 from app.modules.indexer_definitions.schemas.internal import (
+    IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
 )
 from app.modules.indexer_definitions.service import IndexerDefinitionsService
@@ -28,6 +29,9 @@ SEARCH_TTL = 10 * 60
 TORRENT_CACHE_SIZE = 200
 NFO_CACHE_SIZE = 1000
 NFO_TIMEOUT = 6.0
+RECOMMENDED_TTL = 3 * 60 * 60
+RECOMMENDED_RETRY = 10 * 60
+IMDB_CACHE_SIZE = 5000
 
 # Csak videós kategóriák (felnőtt, zene, könyv, játék, program kimarad).
 SERIES_CATEGORIES = {
@@ -178,6 +182,14 @@ class TorboxPlayService:
         self._lock = asyncio.Lock()
         # NFO-elemzések torrentenként (a „nincs adat” is, hogy ne kérjük újra).
         self._nfos: dict[str, NfoInfo] = {}
+        # Az nCore ajánló oldala (3 óránként frissül, hibánál a régi marad).
+        self._recommended: list[IndexerDefinitionRecommendedItem] = []
+        self._recommended_at = 0.0
+        self._recommended_lock = asyncio.Lock()
+        self._recommended_task: asyncio.Task[None] | None = None
+        # Torrent → IMDb-azonosító (az adatlapról; nem változik).
+        self._imdb: dict[str, str | None] = {}
+        self._imdb_limit = asyncio.Semaphore(3)
         # Egy torrentet egyszerre csak egy kérés töltsön fel (a lejátszók
         # gyakran több kérést is küldenek ugyanarra a linkre).
         self._upload_locks: dict[str, asyncio.Lock] = {}
@@ -229,6 +241,66 @@ class TorboxPlayService:
 
     def hit(self, torrent_id: str) -> IndexerDefinitionSearchHit | None:
         return self._hits.get(torrent_id)
+
+    def remember_hit(self, hit: IndexerDefinitionSearchHit) -> None:
+        """Ajánlóból ismert adatok (kategória, seeder) a forráslistához."""
+        self._hits.setdefault(hit.torrent_id, hit)
+
+    # ------------------------------------------------------------ ajánló
+    async def recommended(self) -> list[IndexerDefinitionRecommendedItem]:
+        """Az nCore ajánló elemei. Frissítés 3 óránként a háttérben; amíg
+        tart, a régi lista megy ki. Csak legelőször kell rá várni."""
+        age = time.monotonic() - self._recommended_at
+        if self._recommended and age < RECOMMENDED_TTL:
+            return self._recommended
+        if self._recommended:
+            if self._recommended_task is None or self._recommended_task.done():
+                self._recommended_task = asyncio.create_task(
+                    self._refresh_recommended()
+                )
+            return self._recommended
+        await self._refresh_recommended()
+        return self._recommended
+
+    async def _refresh_recommended(self) -> None:
+        async with self._recommended_lock:
+            if (
+                self._recommended
+                and time.monotonic() - self._recommended_at < RECOMMENDED_TTL
+            ):
+                return
+            definition = self._definitions.get_by_id(INDEXER_ID)
+            try:
+                items = await definition.fetch_recommended()
+            except Exception as error:
+                logger.warning("nCore-ajánló nem olvasható: %s", error)
+                # Pár perc múlva újrapróbáljuk; addig a régi lista marad.
+                self._recommended_at = (
+                    time.monotonic() - RECOMMENDED_TTL + RECOMMENDED_RETRY
+                )
+                return
+            if items:
+                self._recommended = items
+            self._recommended_at = time.monotonic()
+
+    async def imdb_of(self, torrent_id: str) -> str | None:
+        """A torrent IMDb-azonosítója az nCore-adatlapról (egyszer kérjük le)."""
+        if torrent_id in self._imdb:
+            return self._imdb[torrent_id]
+        definition = self._definitions.get_by_id(INDEXER_ID)
+        async with self._imdb_limit:
+            try:
+                found = await definition.find_torrent_by_id(torrent_id)
+            except Exception as error:
+                logger.info("IMDb nem olvasható (%s): %s", torrent_id, error)
+                return None
+        imdb_id = found.imdb_id if found and found.imdb_id else None
+        if imdb_id and not imdb_id.startswith("tt"):
+            imdb_id = None
+        if len(self._imdb) >= IMDB_CACHE_SIZE:
+            self._imdb.pop(next(iter(self._imdb)), None)
+        self._imdb[torrent_id] = imdb_id
+        return imdb_id
 
     def cached_torrent(self, torrent_id: str) -> CachedTorrent | None:
         return self._torrents.get(torrent_id)

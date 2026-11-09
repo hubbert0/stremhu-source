@@ -22,6 +22,7 @@ from app.modules.indexer_definitions.schemas.internal import (
     IndexerDefinitionFindTorrentsResult,
     IndexerDefinitionLogin,
     IndexerDefinitionLoginPayload,
+    IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
     IndexerDefinitionTorrent,
 )
@@ -272,6 +273,10 @@ class BaseIndexerDefinition(ABC):
         raise NotImplementedError(
             f"{self.name}: az IMDb szerinti keresés nem támogatott."
         )
+
+    async def fetch_recommended(self) -> list[IndexerDefinitionRecommendedItem]:
+        """Az indexer ajánló oldala (nem minden indexer tudja)."""
+        raise NotImplementedError(f"{self.name}: az ajánló nem támogatott.")
 
     async def fetch_nfo(self, torrent_id: str) -> str:
         """A kiadás NFO-ja sima szövegként (nem minden indexer tudja)."""

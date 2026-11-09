@@ -26,7 +26,7 @@ from app.modules.stremio.schemas import (
     StremioCatalogResponse,
     StremioStreams,
 )
-from app.modules.torbox_play import stremio as adapter
+from app.modules.torbox_play import ajanlo, stremio as adapter
 from app.modules.torbox_play.service import TorboxPlayError, TorboxPlayService
 from app.modules.users.models import UserModel
 
@@ -37,10 +37,10 @@ Settings = Annotated[SettingsService, Depends(get_settings_service)]
 User = Annotated[UserModel, Depends(ApiKeyGuard())]
 
 
-def _search(extra: str) -> str | None:
+def _extra(extra: str, name: str) -> str | None:
     for part in extra.split("&"):
-        if part.startswith("search="):
-            return unquote(part.removeprefix("search="))
+        if part.startswith(f"{name}="):
+            return unquote(part.removeprefix(f"{name}="))
     return None
 
 
@@ -71,7 +71,7 @@ def manifest(settings: Settings, _: User) -> Manifest:
         ],
         types=[ContentType.MOVIE, ContentType.SERIES],
         id_prefixes=[adapter.PREFIX],
-        catalogs=adapter.manifest_catalogs(),
+        catalogs=adapter.manifest_catalogs() + ajanlo.manifest_catalogs(),
         behavior_hints=ManifestBehaviorHints(
             configurable=False, configuration_required=False
         ),
@@ -94,9 +94,14 @@ def catalog(media_type: str, catalog_id: str, _: User) -> StremioCatalogResponse
 async def catalog_with_extra(
     media_type: str, catalog_id: str, extra: str, service: Service, _: User
 ) -> StremioCatalogResponse:
-    if catalog_id != adapter.CATALOG_ID or media_type not in ("movie", "series"):
+    if media_type not in ("movie", "series"):
         return StremioCatalogResponse(metas=[])
-    metas = await adapter.catalog(service, media_type, _search(extra))
+    if catalog_id == ajanlo.CATALOG_ID:
+        metas = await ajanlo.catalog(service, media_type, _extra(extra, "genre"))
+        return StremioCatalogResponse(metas=metas)
+    if catalog_id != adapter.CATALOG_ID:
+        return StremioCatalogResponse(metas=[])
+    metas = await adapter.catalog(service, media_type, _extra(extra, "search"))
     return StremioCatalogResponse(metas=metas)
 
 

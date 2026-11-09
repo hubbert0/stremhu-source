@@ -325,6 +325,8 @@ A Nuvio csak azt találja meg, ami a TMDB-n szerepel. Ami nincs ott (új évad, 
 - **Lejátszás:** a forráslista csak lekérdezi a TorBoxot, **feltölteni csak az elindított verziót tölti fel**. Ha az még nincs kész, egy rövid „még tölti” videó szól – pár perc múlva nyisd meg újra, a forráslistában látod, hol tart. Ugyanazt a torrentet nem tölti fel kétszer. Az nCore-os torrentek seedelését a helykezelés ([8. fejezet](#8-torbox-helykezelés)) ugyanúgy intézi.
 - Kell hozzá a `TORBOX_API_KEY` a `.env`-ben és a StremHU-ban beállított nCore-fiók.
 
+**nCore-ajánló gyűjtemény.** Ugyanez a bővítmény adja az nCore ajánló oldalának (`recommended.php`) Film és Sorozat dobozát is, négy kártyában: *Népszerű filmek*, *Népszerű sorozatok*, *Staff ajánló – filmek*, *Staff ajánló – sorozatok* (a játék, program, zene és eBook doboz kimarad). Címenként egy csempe, a legnépszerűbb elöl; ha az nCore-adatlapon van IMDb-link, a rendes adatlap nyílik (ott az nCore-fül adja a forrásokat), különben nCore-csempe. A szerver 3 óránként frissíti. Ezek nem jelennek meg külön kezdőlapsorként, csak gyűjteményben: a kész beállítás a [`nuvio/ncore-gyujtemeny.json`](nuvio/ncore-gyujtemeny.json). **Figyelem:** a Nuvio gyűjtemény-importja az összes meglévő gyűjteményt lecseréli, ezért előbb másold ki a meglévőket (Gyűjtemények → JSON másolása), és fűzd hozzá ezt a gyűjteményt a lista végére.
+
 Ellenőrzés a szerveren: `docker compose exec stremhu python -m app.modules.torbox_play.selftest "X-Faktor S14"` – kiírja a találatokat, az összevont csempéket és az első csempe forráslistáját (semmit nem tölt fel a TorBoxra).
 
 ## 6. Címek és jelszavak

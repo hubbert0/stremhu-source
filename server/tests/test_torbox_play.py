@@ -16,6 +16,7 @@ from app.modules.auth.dependencies import get_auth_service
 from app.modules.indexer_definitions.base_indexer_definition import IndexerClient
 from app.modules.indexer_definitions.integrations.ncore import NcoreIndexerDefinition
 from app.modules.indexer_definitions.schemas.internal import (
+    IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
     IndexerDefinitionTorrent,
 )
@@ -81,6 +82,8 @@ class FakeNcore:
         self.searches: list[str] = []
         self.downloads: list[str] = []
         self.nfo_requests: list[str] = []
+        self.recommended_calls = 0
+        self.details: list[str] = []
 
     async def fetch_nfo(self, torrent_id: str) -> str:
         self.nfo_requests.append(torrent_id)
@@ -131,8 +134,66 @@ class FakeNcore:
             ]
         return []
 
+    async def fetch_recommended(self) -> list[IndexerDefinitionRecommendedItem]:
+        self.recommended_calls += 1
+        item = IndexerDefinitionRecommendedItem
+        return [
+            item(torrent_id="222", name=FILM, section="film", group="nepszeru", rank=0),
+            item(
+                torrent_id="223",
+                name=FILM_SUB,
+                section="film",
+                group="nepszeru",
+                rank=1,
+            ),
+            item(
+                torrent_id="301",
+                name="Other.Movie.2021.720p.WEB-DL",
+                section="film",
+                group="nepszeru",
+                rank=2,
+            ),
+            item(
+                torrent_id="302",
+                name="Hot.Movie.2026.MA.WEBRip.x264.HUN-FULCRUM",
+                section="film",
+                group="aktiv",
+                rank=0,
+                poster="https://nc-img.example/hot.jpg",
+                hungarian=True,
+                quality="SD",
+                seeders=8000,
+            ),
+            item(
+                torrent_id="303",
+                name="Classic.Film.1975.HUN.PAL.DVD9-TRASH",
+                section="film",
+                group="staff",
+                rank=0,
+                poster="https://nc-img.example/classic.jpg",
+                hungarian=True,
+                quality="DVD9",
+            ),
+            item(
+                torrent_id="401",
+                name="MobLand.S02E07.720p.AMZN.WEB-DL.HUN.ENG-PTHD",
+                section="sorozat",
+                group="nepszeru",
+                rank=0,
+            ),
+            item(
+                torrent_id="402",
+                name="MobLand.S02E08.1080p.AMZN.WEB-DL.HUN.ENG-PTHD",
+                section="sorozat",
+                group="nepszeru",
+                rank=1,
+            ),
+        ]
+
     async def find_torrent_by_id(self, torrent_id: str) -> IndexerDefinitionTorrent:
+        self.details.append(torrent_id)
         return IndexerDefinitionTorrent(
+            imdb_id={"222": "tt1", "401": "tt5"}.get(torrent_id),
             torrent_id=torrent_id,
             download_url=f"https://ncore.pro/torrents.php?action=download&id={torrent_id}",
         )
@@ -304,7 +365,16 @@ def test_manifest(client: TestClient) -> None:
     assert [(c["id"], c["type"]) for c in manifest["catalogs"]] == [
         ("ncore-kereses", "movie"),
         ("ncore-kereses", "series"),
+        ("ncore-ajanlo", "movie"),
+        ("ncore-ajanlo", "series"),
     ]
+    # Kötelező „genre” → nem kezdőlapsor, de gyűjteménymappába felvehető.
+    genre = manifest["catalogs"][2]["extra"][0]
+    assert genre == {
+        "name": "genre",
+        "isRequired": True,
+        "options": ["Népszerű", "Staff ajánló"],
+    }
     assert manifest["catalogs"][0]["extra"][0]["isRequired"] is True
     # Forrás a rendes (tt…) adatlapokhoz is, adatlap csak a sajátjainkhoz.
     stream_resource = next(
@@ -502,3 +572,52 @@ def test_play_auto_uploads_and_picks_largest_file(
     played = client.get(base("/play/222/auto"), follow_redirects=False)
     assert played.headers["location"] == "https://cdn.torbox.app/70/101.mkv"
     assert client.get(base("/play/222/x"), follow_redirects=False).status_code == 404
+
+
+def ajanlo(client: TestClient, kind: str, genre: str) -> list[dict[str, Any]]:
+    from urllib.parse import quote
+
+    path = f"/catalog/{kind}/ncore-ajanlo/genre={quote(genre)}.json"
+    return client.get(base(path)).json()["metas"]
+
+
+def test_ajanlo_popular_movies_merge_versions_and_use_imdb(
+    client: TestClient, service: TorboxPlayService
+) -> None:
+    metas = ajanlo(client, "movie", "Népszerű")
+    by_id = {m["id"]: m for m in metas}
+    # 222 + 223 ugyanaz a film → egy csempe, IMDb-vel a rendes adatlapra.
+    assert set(by_id) == {"tt1", "stremhu-tb:ncore:302h", "stremhu-tb:ncore:301"}
+    assert metas[0]["id"] == "tt1"
+    assert by_id["tt1"]["name"] == "X-Faktor Film (2020)"
+    assert "2 verzió" in by_id["tt1"]["description"]
+    assert by_id["tt1"]["poster"].endswith("/tt1/img")
+    hot = by_id["stremhu-tb:ncore:302h"]
+    assert hot["poster"] == "https://nc-img.example/hot.jpg"
+    assert hot["description"].startswith("📈")
+    # A borítóról ismert kategória a forráslistához is megmarad.
+    hit = service.hit("302")
+    assert hit is not None and hit.category == "xvid_hun" and hit.seeders == 8000
+
+
+def test_ajanlo_staff_and_series(client: TestClient) -> None:
+    staff = ajanlo(client, "movie", "Staff ajánló")
+    assert [m["name"] for m in staff] == ["Classic Film (1975)"]
+    assert staff[0]["description"].startswith("⭐")
+    series = ajanlo(client, "series", "Népszerű")
+    assert [(m["id"], m["name"]) for m in series] == [("tt5", "MobLand")]
+    assert "2 rész" in series[0]["description"]
+
+
+def test_ajanlo_is_cached_and_needs_genre(
+    client: TestClient, service: TorboxPlayService
+) -> None:
+    ncore = service._definitions.ncore  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    ajanlo(client, "movie", "Népszerű")
+    ajanlo(client, "series", "Népszerű")
+    ajanlo(client, "movie", "Népszerű")
+    assert ncore.recommended_calls == 1
+    # Az IMDb-adatlapot címenként egyszer kéri le.
+    assert ncore.details.count("222") == 1
+    assert ajanlo(client, "movie", "Ismeretlen") == []
+    assert client.get(base("/catalog/movie/ncore-ajanlo.json")).json() == {"metas": []}

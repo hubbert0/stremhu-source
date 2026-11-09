@@ -20,6 +20,7 @@ from app.modules.indexer_definitions.schemas.internal import (
     AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
     IndexerDefinitionLoginPayload,
+    IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
     IndexerDefinitionTorrent,
 )
@@ -149,6 +150,12 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
         response.raise_for_status()
         text = re.sub(r"<br\s*/?>", "\n", response.text, flags=re.IGNORECASE)
         return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+    async def fetch_recommended(self) -> list[IndexerDefinitionRecommendedItem]:
+        """Az ajánló oldal (recommended.php) Film és Sorozat doboza."""
+        response = await self._client.get("/recommended.php")
+        response.raise_for_status()
+        return parse_recommended(response.text)
 
     async def search_by_name(
         self, query: str, max_pages: int = 2
@@ -330,3 +337,78 @@ def parse_hit_and_run_page(
         entries[id_val] = parse_remaining(_row_of(link).text(separator=" "))
 
     return entries
+
+
+_REC_HEAD = re.compile(
+    r"class=[\"']fobox_fej[\"'][^>]*>(.*?)</div>", re.IGNORECASE | re.DOTALL
+)
+_REC_ACTIVE = re.compile(r"Legakt(?:í|i|&iacute;|&#237;)vabb", re.IGNORECASE)
+_REC_LINK = re.compile(
+    r"<a\b[^>]*href=[\"'][^\"']*action=details&(?:amp;)?id=(\d+)[\"'][^>]*>(.*?)</a>",
+    re.IGNORECASE | re.DOTALL,
+)
+_REC_IMG = re.compile(r"<img\b([^>]*)>", re.IGNORECASE)
+_REC_ATTR = re.compile(r"(\w+)=[\"']([^\"']*)[\"']")
+_REC_FLAG = re.compile(r"flags/(\w+)\.(?:gif|png)", re.IGNORECASE)
+_REC_QUALITY = re.compile(r"(?:&nbsp;|\s)([A-Z][A-Z0-9]{1,5}):\s*[\d.,]+\s*[KMGT]i?B")
+_REC_SEEDERS = re.compile(r"Seederek:\s*(\d+)", re.IGNORECASE)
+
+
+def parse_recommended(page: str) -> list[IndexerDefinitionRecommendedItem]:
+    """Az ajánló HTML-je → elemek; csak a Film és a Sorozat doboz."""
+    heads: list[tuple[int, str]] = []
+    for match in _REC_HEAD.finditer(page):
+        text = html.unescape(re.sub(r"<[^>]+>", " ", match.group(1)))
+        heads.append((match.start(), text.split("|")[0].strip().lower()))
+    actives = [m.start() for m in _REC_ACTIVE.finditer(page)]
+
+    items: list[IndexerDefinitionRecommendedItem] = []
+    ranks: dict[tuple[str, str], int] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for link in _REC_LINK.finditer(page):
+        head_pos, head = next(
+            ((p, t) for p, t in reversed(heads) if p < link.start()), (-1, "")
+        )
+        section = (
+            "film"
+            if head.startswith("film")
+            else "sorozat"
+            if head.startswith("sorozat")
+            else None
+        )
+        if section is None:
+            continue
+        torrent_id, inner = link.group(1), link.group(2)
+        img = _REC_IMG.search(inner)
+        if img:
+            attrs = dict(_REC_ATTR.findall(img.group(1)))
+            name = html.unescape(attrs.get("title", "")).strip()
+            after = page[link.end() : link.end() + 400]
+            in_active = any(head_pos < p < link.start() for p in actives)
+            group = "aktiv" if in_active else "staff"
+            flag = _REC_FLAG.search(after)
+            quality = _REC_QUALITY.search(after)
+            seeders = _REC_SEEDERS.search(after)
+            poster = attrs.get("src")
+        else:
+            name = html.unescape(re.sub(r"<[^>]+>", "", inner)).strip()
+            group, flag, quality, seeders, poster = "nepszeru", None, None, None, None
+        if not name or (section, group, torrent_id) in seen:
+            continue
+        seen.add((section, group, torrent_id))
+        rank = ranks.get((section, group), 0)
+        ranks[(section, group)] = rank + 1
+        items.append(
+            IndexerDefinitionRecommendedItem(
+                torrent_id=torrent_id,
+                name=name,
+                section=section,
+                group=group,
+                rank=rank,
+                poster=poster,
+                hungarian=(flag.group(1).lower() == "hu") if flag else None,
+                quality=quality.group(1) if quality else None,
+                seeders=int(seeders.group(1)) if seeders else None,
+            )
+        )
+    return items
