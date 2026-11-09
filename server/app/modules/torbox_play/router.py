@@ -113,14 +113,19 @@ async def stream(
 
 
 @router.get("/play/{torrent_id}/{file_index}", include_in_schema=False)
-async def play(torrent_id: str, file_index: int, service: Service, _: User):
-    """Lejátszáskor kér friss TorBox-linket, és oda irányít át."""
+async def play(
+    torrent_id: str, file_index: int, service: Service, settings: Settings, user: User
+):
+    """Lejátszáskor: ha a verzió még nincs a TorBoxon, most kerül fel, és a
+    „még tölti” videóra irányítunk; ha kész, a friss TorBox-linkre."""
     try:
-        url = await service.download_url(torrent_id, file_index)
+        url = await service.play_url(torrent_id, file_index)
     except TorboxPlayError as error:
         return PlainTextResponse(
             str(error), status_code=status.HTTP_503_SERVICE_UNAVAILABLE
         )
+    if url is None:
+        url = f"{settings.get_app_url()}/api/{user.api_key}/ncore/varj.mp4"
     return RedirectResponse(url=url, status_code=status.HTTP_302_FOUND)
 
 

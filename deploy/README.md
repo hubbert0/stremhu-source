@@ -319,11 +319,12 @@ A Nuvio csak azt találja meg, ami a TMDB-n szerepel. Ami nincs ott (új évad, 
 
 - **Telepítés:** StremHU → kezdőlap → **Torrent hozzáadása a TorBoxhoz** → felül az **nCore-keresés a Nuvióban** kártya → másold ki a linket (`https://<stremhu-cím>/api/<API-kulcs>/ncore/manifest.json`), és a Nuvióban add hozzá a Bővítmények közé. A link a saját API-kulcsodat tartalmazza – ne oszd meg.
 - **Keresés:** a Nuvio keresőjébe szabad szöveggel, ahogy az nCore-on is keresnél (pl. `X-Faktor S14E11`, `X-Faktor S14`). A találatok **🔎 nCore-keresés** néven jelennek meg, filmek és sorozatok külön; felnőtt, zenei és egyéb nem videós kategória nem jelenik meg.
-- **Adatlap:** a `.torrent` fájllistájából készül; évadcsomagnál minden rész külön epizód (a minta- és extrafájlok nélkül).
-- **Lejátszás:** ha a torrent már kész a TorBoxon, azonnal indul. Ha nincs fent, a szerver feltölti, és a forrás **„⏳ TorBox tölti: 42%”** néven jelenik meg (egy rövid „még tölti” videó) – pár perc múlva nyisd meg újra. Ugyanazt a torrentet nem tölti fel kétszer. Az nCore-os torrentek seedelését a helykezelés ([8. fejezet](#8-torbox-helykezelés)) ugyanúgy intézi.
+- **Egy cím, egy csempe:** ugyanannak a címnek (és résznek/évadnak/évnek) a verziói (4K, 1080p, 720p, SD…) egy találatba kerülnek, pl. „X-Faktor S14E11 – 3 verzió: 1080p, 720p, SD · 🇭🇺 magyar hang”. Évadcsomagnál az adatlapon minden rész külön epizód (a `.torrent` fájllistájából, minta- és extrafájlok nélkül).
+- **Forráslista:** verziónként egy sor, AIOStreams-szerűen: felbontás, hang (🇭🇺 magyar, ha az nCore-kategória magyar, különben eredeti), felirat (ha a kiadás neve jelzi, pl. HUNSUB), forrás · kódek · HDR, méret, seederek és a TorBox-állapot: **▶️** kész, azonnal indul · **⏳ 42%** a TorBox tölti · **⬇️** még nincs fent, elindításkor feltölti. Elöl a kész verziók, utána felbontás és seederszám szerint.
+- **Lejátszás:** a forráslista csak lekérdezi a TorBoxot, **feltölteni csak az elindított verziót tölti fel**. Ha az még nincs kész, egy rövid „még tölti” videó szól – pár perc múlva nyisd meg újra, a forráslistában látod, hol tart. Ugyanazt a torrentet nem tölti fel kétszer. Az nCore-os torrentek seedelését a helykezelés ([8. fejezet](#8-torbox-helykezelés)) ugyanúgy intézi.
 - Kell hozzá a `TORBOX_API_KEY` a `.env`-ben és a StremHU-ban beállított nCore-fiók.
 
-Ellenőrzés a szerveren: `docker compose exec stremhu python -m app.modules.torbox_play.selftest "X-Faktor S14"` – kiírja a találatokat és az első `.torrent` fájllistáját.
+Ellenőrzés a szerveren: `docker compose exec stremhu python -m app.modules.torbox_play.selftest "X-Faktor S14"` – kiírja a találatokat, az összevont csempéket és az első csempe forráslistáját (semmit nem tölt fel a TorBoxra).
 
 ## 6. Címek és jelszavak
 
