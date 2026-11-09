@@ -20,7 +20,7 @@ _TITLE_END = re.compile(
     r"2160p|1080p|1080i|720p|576p|480p|4k|uhd|"
     r"hun|eng|ger|multi|dual|"
     r"web[ ._-]?dl|webrip|web|bluray|blu[ ._-]?ray|bdrip|brrip|dvdrip|dvd|hdtv|"
-    r"remux|hdrip|xvid|x264|x265|h[ ._]?264|h[ ._]?265|hevc|avc|"
+    r"remux|hdrip|xvid|x264|x265|h[ ._]?264|h[ ._]?265|hevc|avc|bd(?:25|50|66|100)|bdmv|pal|ntsc|"
     r"complete|season|evad|proper|repack|extended|uncut|remastered|internal"
     r")(?![a-z0-9])",
     re.I,

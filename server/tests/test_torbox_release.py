@@ -59,3 +59,12 @@ def test_versions_share_key() -> None:
     a = parse_release("X-Faktor.S14E11.HUN.WEB-DL.1080p.H264-LEGION")
     b = parse_release("X.Faktor.S14E11.720p.HDTV.HUN")
     assert (a.key, a.marker) == (b.key, b.marker)
+
+
+def test_disc_size_tokens_end_the_title() -> None:
+    assert parse_release("A szarvasvadász BD50").title == "A szarvasvadász"
+    assert parse_release("Máris.hiányzol.BD25.HUN").title == "Máris hiányzol"
+    assert (
+        parse_release("Amerikai.kopo.2023.RETAIL.HUN.PAL.DVD9-TRASH").title
+        == "Amerikai kopo"
+    )
