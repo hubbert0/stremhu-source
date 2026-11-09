@@ -4,6 +4,7 @@
 """
 
 import datetime
+import html
 import re
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -138,6 +139,16 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
             torrents=torrents,
             next_page=current_page + 1 if current_page < last_page else None,
         )
+
+    async def fetch_nfo(self, torrent_id: str) -> str:
+        """Az adatlap „NFO: Mutat” gombja mögötti szöveg (ajax.php?action=nfo)."""
+        response = await self._client.get(
+            "/ajax.php",
+            params={"action": "nfo", "id": torrent_id, "details": "1"},
+        )
+        response.raise_for_status()
+        text = re.sub(r"<br\s*/?>", "\n", response.text, flags=re.IGNORECASE)
+        return html.unescape(re.sub(r"<[^>]+>", "", text))
 
     async def search_by_name(
         self, query: str, max_pages: int = 2

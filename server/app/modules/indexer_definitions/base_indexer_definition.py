@@ -267,6 +267,10 @@ class BaseIndexerDefinition(ABC):
             f"{self.name}: a név szerinti keresés nem támogatott."
         )
 
+    async def fetch_nfo(self, torrent_id: str) -> str:
+        """A kiadás NFO-ja sima szövegként (nem minden indexer tudja)."""
+        raise NotImplementedError(f"{self.name}: az NFO lekérése nem támogatott.")
+
     async def find_torrent_by_id(
         self, torrent_id: str
     ) -> IndexerDefinitionTorrent | None:

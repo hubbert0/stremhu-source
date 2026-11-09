@@ -13,17 +13,21 @@ from typing import Any
 
 import httpx
 
+from app.common.logger import logger
 from app.common.torrent_info import TorrentFileInfo, TorrentInfo, parse_torrent_info
 from app.modules.indexer_definitions.schemas.internal import (
     IndexerDefinitionSearchHit,
 )
 from app.modules.indexer_definitions.service import IndexerDefinitionsService
+from app.modules.torbox_play.nfo import NfoInfo, parse_nfo
 from app.modules.torbox_seed.client import TorboxApiError, TorboxClient
 from app.modules.torbox_seed.config import TorboxSeedSettings
 
 INDEXER_ID = "ncore"
 SEARCH_TTL = 10 * 60
 TORRENT_CACHE_SIZE = 200
+NFO_CACHE_SIZE = 1000
+NFO_TIMEOUT = 6.0
 
 # Csak videós kategóriák (felnőtt, zene, könyv, játék, program kimarad).
 SERIES_CATEGORIES = {
@@ -161,6 +165,8 @@ class TorboxPlayService:
         # A legutóbbi keresések találatai azonosító szerint (seeder, kategória).
         self._hits: dict[str, IndexerDefinitionSearchHit] = {}
         self._lock = asyncio.Lock()
+        # NFO-elemzések torrentenként (a „nincs adat” is, hogy ne kérjük újra).
+        self._nfos: dict[str, NfoInfo] = {}
         # Egy torrentet egyszerre csak egy kérés töltsön fel (a lejátszók
         # gyakran több kérést is küldenek ugyanarra a linkre).
         self._upload_locks: dict[str, asyncio.Lock] = {}
@@ -205,6 +211,29 @@ class TorboxPlayService:
             *(self.torrent(tid) for tid in torrent_ids), return_exceptions=True
         )
         return [r for r in results if isinstance(r, CachedTorrent)]
+
+    async def nfo(self, torrent_id: str) -> NfoInfo:
+        """Hang-, felirat- és bitrátaadatok az nCore-os NFO-ból; hibánál üres."""
+        cached = self._nfos.get(torrent_id)
+        if cached is not None:
+            return cached
+        definition = self._definitions.get_by_id(INDEXER_ID)
+        try:
+            text = await asyncio.wait_for(
+                definition.fetch_nfo(torrent_id), timeout=NFO_TIMEOUT
+            )
+            info = await asyncio.to_thread(parse_nfo, text)
+        except Exception as error:  # az NFO csak kiegészítés, nem lehet akadály
+            logger.info("NFO nem olvasható (%s): %s", torrent_id, error)
+            return NfoInfo()
+        if len(self._nfos) >= NFO_CACHE_SIZE:
+            self._nfos.pop(next(iter(self._nfos)), None)
+        self._nfos[torrent_id] = info
+        return info
+
+    async def nfos(self, torrent_ids: list[str]) -> dict[str, NfoInfo]:
+        results = await asyncio.gather(*(self.nfo(tid) for tid in torrent_ids))
+        return dict(zip(torrent_ids, results, strict=True))
 
     # ------------------------------------------------------------ torrent
     async def torrent(self, torrent_id: str) -> CachedTorrent:

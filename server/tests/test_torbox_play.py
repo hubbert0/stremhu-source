@@ -67,10 +67,26 @@ INFOS = {tid: parse_torrent_info(data) for tid, data in TORRENTS.items()}
 TORRENT = TORRENTS["111"]
 
 
+FILM_NFO = """
+\u2588\u2588   Bitrate........: 15 900 Kbps   \u2588\u2588
+\u2588\u2588     AUDIO 1                         AUDIO 2          \u2588\u2588
+\u2588\u2588   Language.......: Hungarian      Language.......: English  \u2588\u2588
+\u2588\u2588   Channels.......: 6 (5.1)        Channels.......: 8 (7.1)  \u2588\u2588
+\u2588\u2588   Subtitles......: Hungarian Forced & Full   \u2588\u2588
+"""
+
+
 class FakeNcore:
     def __init__(self) -> None:
         self.searches: list[str] = []
         self.downloads: list[str] = []
+        self.nfo_requests: list[str] = []
+
+    async def fetch_nfo(self, torrent_id: str) -> str:
+        self.nfo_requests.append(torrent_id)
+        if torrent_id == "223":
+            raise RuntimeError("nCore nem válaszol")
+        return FILM_NFO if torrent_id == "222" else "csak egy logó"
 
     async def search_by_name(self, query: str) -> list[IndexerDefinitionSearchHit]:
         self.searches.append(query)
@@ -352,17 +368,28 @@ def test_play_uploads_only_the_chosen_version(
     assert torbox.created == ["112"]
 
 
-def test_movie_streams_pick_largest_file_and_show_subtitles(
-    client: TestClient,
+def test_movie_streams_use_nfo_and_fall_back_to_name(
+    client: TestClient, service: TorboxPlayService
 ) -> None:
     search(client, "movie")
     streams = client.get(base(f"/stream/movie/{MOVIE_ID}.json")).json()["streams"]
     assert [s["name"] for s in streams] == ["nCore ⬇️\n1080p", "nCore ⬇️\n720p"]
     assert streams[0]["url"].endswith("/ncore/play/222/1")
-    assert "🔊" not in streams[0]["description"]
-    assert "🗣️ magyar hang · DTS 5.1" in streams[0]["description"]
-    assert "🗣️ eredeti hang" in streams[1]["description"]
-    assert "💬 magyar felirat" in streams[1]["description"]
+    # 222: az NFO-ból (minden hangsáv, felirat, bitráta).
+    first = streams[0]["description"]
+    assert "🗣️ magyar 5.1 · angol 7.1" in first
+    assert "💬 magyar (kényszerített + teljes)" in first
+    assert "🎞️ BluRay · H.264 · 15,9 Mbps" in first
+    # 223: az NFO nem érhető el → a kiadás neve marad.
+    second = streams[1]["description"]
+    assert "🗣️ eredeti hang" in second
+    assert "💬 magyar felirat" in second
+
+    # Másodszorra a sikeres NFO-t nem kéri le újra.
+    client.get(base(f"/stream/movie/{MOVIE_ID}.json"))
+    requests = service._definitions.ncore.nfo_requests  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    assert requests.count("222") == 1
+    assert requests.count("223") == 2
 
 
 def test_legacy_ids_still_work(client: TestClient) -> None:

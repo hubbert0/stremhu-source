@@ -12,6 +12,7 @@ Azonosítók:
 - régi forma (még elfogadjuk): ``stremhu-tb:ncore:<torrent_id>[:<fájlindex>]``.
 """
 
+import asyncio
 import functools
 import re
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ from app.modules.stremio.schemas import (
     MetaVideo,
     StremioStream,
 )
+from app.modules.torbox_play.nfo import NfoInfo
 from app.modules.torbox_play.release import (
     RESOLUTION_ORDER,
     Release,
@@ -338,16 +340,25 @@ def _description(
     torrent: CachedTorrent,
     seeders: int | None,
     status_line: str,
+    nfo: NfoInfo,
 ) -> str:
-    language = "🗣️ magyar hang" if release.hungarian_audio else "🗣️ eredeti hang"
-    if release.audio:
-        language += f" · {release.audio}"
+    # Az NFO pontosabb (minden hangsáv és felirat); ha nincs, a kiadás neve.
+    if nfo.audio:
+        language = "🗣️ " + " · ".join(track.label for track in nfo.audio)
+    else:
+        language = "🗣️ magyar hang" if release.hungarian_audio else "🗣️ eredeti hang"
+        if release.audio:
+            language += f" · {release.audio}"
     lines = [language]
-    if release.hungarian_subtitles:
+    if nfo.subtitles:
+        lines.append("💬 " + ", ".join(track.label for track in nfo.subtitles))
+    elif release.hungarian_subtitles:
         lines.append("💬 magyar felirat")
     elif release.subtitles:
         lines.append("💬 felirat (a kiadás neve szerint)")
-    video = " · ".join(p for p in (release.source, release.codec, release.hdr) if p)
+    video = " · ".join(
+        p for p in (release.source, release.codec, release.hdr, nfo.bitrate) if p
+    )
     if video:
         lines.append(f"🎞️ {video}")
     size = f"💾 {human_size(file.size)}"
@@ -366,7 +377,8 @@ async def streams(
     if own is None:
         return []
     try:
-        found = await service.torrents([v.torrent_id for v in own.versions])
+        ids = [v.torrent_id for v in own.versions]
+        found, nfos = await asyncio.gather(service.torrents(ids), service.nfos(ids))
         if not found:
             raise TorboxPlayError("Ez a torrent már nincs fent az nCore-on.")
         try:
@@ -399,7 +411,14 @@ async def streams(
         seeders = hit.seeders if hit is not None else None
         stream = StremioStream(
             name=f"nCore {icon}\n{release.resolution}",
-            description=_description(release, file, torrent, seeders, status_line),
+            description=_description(
+                release,
+                file,
+                torrent,
+                seeders,
+                status_line,
+                nfos.get(version.torrent_id) or NfoInfo(),
+            ),
             url=(
                 f"{app_url}/api/{user.api_key}/ncore/play/"
                 f"{version.torrent_id}/{file.index}"
