@@ -17,8 +17,19 @@ from dataclasses import dataclass, field
 _ART = re.compile(r"[─-▟■-◿|¦]")
 _SEGMENTS = re.compile(r"\s{3,}")
 _KEY_VALUE = re.compile(
-    r"^([A-Za-z][A-Za-z ()/#-]*?)\s*(?:\.{2,}\s*:?|:)\s*(.+?)\s*\.*$"
+    r"^([A-Za-z][A-Za-z .()/#-]*?)\s*(?:\.{2,}\s*:?|:)\s*(.+?)\s*\.*$"
 )
+# Egy sorban hány „kulcs: érték” pár van (két oszlopos táblában kettő).
+_MARKER = re.compile(r"(?:\.{2,}\s*:?|\s:)\s")
+_AUDIO_KEYS = (
+    "audio",
+    "audio language",
+    "audio languages",
+    "language",
+    "hang",
+    "nyelv",
+)
+_SUBTITLE_KEYS = ("subtitles", "subtitle", "subs", "felirat", "feliratok")
 _HEADER = re.compile(
     r"^(audio|text|subtitles?|video|general|menu|chapters?)"
     r"(?:\s*(?:#\s*)?\d+)?\s*(?:info(?:rmation)?s?)?\s*:?$",
@@ -189,7 +200,9 @@ def _section_kind(header: str) -> str:
 def parse_nfo(text: str) -> NfoInfo:
     sections: list[_Section] = []
     columns: list[_Section] = []
-    global_values: list[tuple[str, str]] = []
+    global_values: list[list[str]] = []
+    # Többsoros érték (pl. „AUDIO....: Hungarian DD 5.1” alatt „English …”).
+    continued: list[str] | None = None
 
     for raw in text.splitlines():
         line = _ART.sub(" ", raw).strip()
@@ -202,21 +215,32 @@ def parse_nfo(text: str) -> NfoInfo:
         if headers and len(headers) == len(segments):
             columns = [_Section(_section_kind(h)) for h in headers]
             sections.extend(columns)
+            continued = None
             continue
+        if len(_MARKER.findall(line)) <= 1:
+            segments = [line]  # egy pár: az érték belső szóközei maradjanak
+        matched = False
         for index, segment in enumerate(segments):
             match = _KEY_VALUE.match(segment)
             if not match:
                 continue
-            key = " ".join(match.group(1).lower().split())
-            value = match.group(2).strip()
+            matched = True
+            key = " ".join(match.group(1).lower().replace(".", " ").split())
+            value = " ".join(match.group(2).split())
             # Az összefoglaló „Subtitles/Audio: …” sor mindig globális.
-            if key in ("subtitles", "subtitle", "subs", "felirat", "feliratok"):
-                global_values.append(("subtitles", value))
+            if key in _SUBTITLE_KEYS:
+                continued = ["subtitles", value]
+                global_values.append(continued)
                 continue
             if columns and index < len(columns):
                 columns[index].values.setdefault(key, value)
+                continued = None
             else:
-                global_values.append((key, value))
+                entry = [key, value]
+                global_values.append(entry)
+                continued = entry if key in _AUDIO_KEYS else None
+        if not matched and continued is not None and _languages(line):
+            continued[1] += "\n" + " ".join(line.split())
 
     info = NfoInfo()
     for section in sections:
@@ -253,22 +277,20 @@ def parse_nfo(text: str) -> NfoInfo:
 
     for key, value in global_values:
         if key == "subtitles":
-            kinds = _subtitle_kinds(value)
-            for language in _languages(value):
-                _add_subtitle(info, SubtitleTrack(language, kinds))
-        elif key in (
-            "audio",
-            "audio language",
-            "audio languages",
-            "language",
-            "hang",
-            "nyelv",
-        ):
+            for part in re.split(r"[\n,;]", value):
+                kinds = _subtitle_kinds(part)
+                # „Hungarian + Forced”: a teljes mellett kényszerített is van.
+                if (
+                    "kényszerített" in kinds
+                    and "teljes" not in kinds
+                    and re.search(r"[+&]|\band\b", part)
+                ):
+                    kinds = (*kinds, "teljes")
+                for language in _languages(part):
+                    _add_subtitle(info, SubtitleTrack(language, kinds))
+        elif key in _AUDIO_KEYS:
             if not info.audio:
-                for part in re.split(r"[/,;+&]| and ", value):
-                    language = _language(part, allow_codes=False)
-                    if language and all(a.language != language for a in info.audio):
-                        info.audio.append(AudioTrack(language, _channels(part)))
+                _parse_audio_summary(info, value)
         elif key in ("bitrate", "bit rate", "video bitrate", "video bit rate"):
             if not info.bitrate_kbps:
                 info.bitrate_kbps = _bitrate_kbps(value)
@@ -278,6 +300,21 @@ def parse_nfo(text: str) -> NfoInfo:
             if section.kind == "general" and "overall bit rate" in section.values:
                 info.bitrate_kbps = _bitrate_kbps(section.values["overall bit rate"])
     return info
+
+
+def _parse_audio_summary(info: NfoInfo, value: str) -> None:
+    """„Hungarian DD 5.1 / English DTS 5.1” vagy soronként egy sáv."""
+    for part in re.split(r"\n|\s/\s|[,;&]|\s\+\s|\band\b", value):
+        language = _language(part, allow_codes=False)
+        channels = _channels(part)
+        if language is None:
+            # „Hungarian / DD 5.1”: a csatorna az előző nyelvhez tartozik.
+            if channels and info.audio and not info.audio[-1].channels:
+                last = info.audio[-1]
+                info.audio[-1] = AudioTrack(last.language, channels, last.format)
+            continue
+        if all(track.language != language for track in info.audio):
+            info.audio.append(AudioTrack(language, channels))
 
 
 def _add_subtitle(info: NfoInfo, track: SubtitleTrack) -> None:

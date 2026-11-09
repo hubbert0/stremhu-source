@@ -119,3 +119,43 @@ def test_ncore_fetch_nfo_strips_html() -> None:
         "details": "1",
     }
     assert text == "Language: Hungarian\nSubs: Hungarian & English"
+
+
+# Valós nCore-NFO-k szerkezete (rövidítve).
+MULTILINE = """
+       TiTLE.........: Barbie (2023)
+       HUN.TiTLE.....:
+       ViDEO.CODEC...: AVC
+       BiTRATE.......: 27.6 Mbps
+       AUDiO.........: Hungarian             DD   5.1  @   640 kbps  / #1 /
+                       English     TrueHD.Atmos   7.1  @  2883 kbps
+                       English        DDP.Atmos   7.1  @   768 kbps
+       SUBTiTLES.....: Hungarian + Forced / #1 / (SRT)
+                       English (SRT) + SDH (SRT+PGS)
+       AUDiO.SOURCE..: No1 (THX!)
+       NOTES.........:
+           Tested with Panasonic TX-65JZ1500E & Dune HD Real Vision 4K
+"""
+
+COMPACT = """RELEASE NAME.: Barbie.2023.MA.WEBRiP.DD5.1.x264.HUN-GS88
+BITRATE......: 1 294 kb/s
+AUDIO........: DD5.1 630 kb/s Hungarian
+SUBTITLES....: Hungarian Forced,Hungarian
+SOURCE.......: 2160p MA WEB-DL + No1 /THX/
+"""
+
+
+def test_multiline_values() -> None:
+    assert labels(MULTILINE) == (
+        ["magyar 5.1", "angol 7.1"],
+        ["magyar (kényszerített + teljes)", "angol"],
+        "27,6 Mbps",
+    )
+
+
+def test_compact_values() -> None:
+    assert labels(COMPACT) == (
+        ["magyar 5.1"],
+        ["magyar (kényszerített + teljes)"],
+        "1,3 Mbps",
+    )
