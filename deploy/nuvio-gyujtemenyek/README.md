@@ -9,6 +9,7 @@ TMDB-kapcsolatából jönnek, nem kell hozzá külön bővítmény vagy kulcs.
 | `mesek.json` | **Mesék** |
 | `ismeretterjeszto.json` | **Ismeretterjesztő** |
 | `ncore.json` | **nCore-ajánló** (kell hozzá a StremHU nCore-keresés (TorBox) bővítménye) |
+| `osszes-tomor.json` | ugyanaz, mint az `osszes.json`, szóközök és üres mezők nélkül (telefonos beillesztéshez rövidebb) |
 | `osszes.json` | mind a négy, ebben a sorrendben – a telefonos appba ezt érdemes importálni |
 
 ## Streamingszolgáltatók
