@@ -15,6 +15,7 @@ from app.modules.relay_settings.router import router as relay_settings_router
 from app.modules.stream.router import router as stream_router
 from app.modules.stremio.router import router as stremio_router
 from app.modules.system.router import router as system_router
+from app.modules.torbox_upload.router import router as torbox_upload_router
 from app.modules.torrents.router import router as torrents_router
 from app.modules.torznab.router import router as torznab_router
 from app.modules.users.router import router as users_router
@@ -55,6 +56,10 @@ api_router.include_router(
 )
 api_router.include_router(
     torrents_router,
+    include_in_schema=show_internal_routes(),
+)
+api_router.include_router(
+    torbox_upload_router,
     include_in_schema=show_internal_routes(),
 )
 api_router.include_router(stream_router)

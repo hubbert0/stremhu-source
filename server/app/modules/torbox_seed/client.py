@@ -83,3 +83,48 @@ class TorboxClient:
 
     async def resume_torrent(self, torrent_id: int) -> None:
         await self._control(torrent_id, "resume")
+
+    async def list_raw(self) -> list[dict[str, Any]]:
+        """A torrentlista nyers formában (állapot, haladás, méret is)."""
+        async with self._client() as client:
+            response = await client.get(
+                "/v1/api/torrents/mylist",
+                params={"bypass_cache": "true", "limit": 1000},
+            )
+        if response.status_code == 404:
+            return []
+        data = self._unwrap(response)
+        if not data:
+            return []
+        return [data] if isinstance(data, dict) else list(data)
+
+    async def create_torrent(
+        self,
+        *,
+        torrent_file: bytes | None = None,
+        filename: str = "upload.torrent",
+        magnet: str | None = None,
+    ) -> tuple[dict[str, Any], str]:
+        """Új torrent a TorBoxra (.torrent fájlból vagy magnetlinkből).
+
+        A seedelésről a fiók alapbeállítása dönt (seed=1); a helykezelés a
+        Hit'n'Run teljesülése után amúgy is leállítja."""
+        # A TorBox multipart űrlapot vár, magnetlinknél is.
+        parts: dict[str, tuple[str | None, bytes | str, str] | tuple[None, str]] = {
+            "seed": (None, "1"),
+            "allow_zip": (None, "false"),
+        }
+        if torrent_file is not None:
+            parts["file"] = (filename, torrent_file, "application/x-bittorrent")
+        elif magnet:
+            parts["magnet"] = (None, magnet)
+        else:
+            raise TorboxApiError("Nincs megadva torrent.")
+        async with self._client() as client:
+            response = await client.post("/v1/api/torrents/createtorrent", files=parts)
+        data = self._unwrap(response) or {}
+        try:
+            detail = str(response.json().get("detail") or "")
+        except ValueError:
+            detail = ""
+        return (data if isinstance(data, dict) else {}), detail

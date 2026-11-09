@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
 import {
   ChevronRightIcon,
+  CloudUploadIcon,
   LayoutDashboardIcon,
   ListVideoIcon,
   PlayIcon,
@@ -31,6 +32,7 @@ import { DASHBOARD_SYSTEM_NAME } from './dashboard/system/route'
 import { DASHBOARD_USERS_NAME } from './dashboard/users/route'
 import { SETTINGS_ACCOUNT_NAME } from './settings/account/route'
 import { SETTINGS_PREFERENCES_NAME } from './settings/preferences/route'
+import { TORBOX_UPLOAD_NAME } from './torbox'
 
 export const Route = createFileRoute('/_protected/')({
   component: ProfileRoute,
@@ -42,6 +44,26 @@ function ProfileRoute() {
   return (
     <div className="grid gap-8">
       <Integration />
+      <Separator />
+      <Item asChild variant="muted">
+        <Link to="/torbox">
+          <ItemMedia variant="icon">
+            <CloudUploadIcon />
+          </ItemMedia>
+          <ItemContent>
+            <ItemTitle>{TORBOX_UPLOAD_NAME} a TorBoxhoz</ItemTitle>
+            <ItemDescription>
+              Saját .torrent fájl vagy magnetlink – utána megjelenik a
+              TorBox-sorban.
+            </ItemDescription>
+          </ItemContent>
+          <ItemActions>
+            <Button className="rounded-full" size="icon-sm" variant="default">
+              <ChevronRightIcon />
+            </Button>
+          </ItemActions>
+        </Link>
+      </Item>
       <Separator />
       <div className="grid gap-4">
         <CardHeader className="px-0">
