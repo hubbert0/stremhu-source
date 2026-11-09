@@ -1,9 +1,9 @@
-"""nCore-ajánló katalógus a Nuvio-gyűjteményhez (4 kártya).
+"""nCore-ajánló sorok a Nuvio kezdőlapján.
 
-Két katalógus (film, sorozat), mindkettő kötelező „genre” választóval:
-„Népszerű” (a jobb oldali lista és a „Legaktívabb” borítók) és „Staff ajánló”.
-A kötelező választó miatt a Nuvio a kezdőlapon nem mutatja őket külön sorként,
-gyűjteménymappába viszont felvehetők (mappa = katalógus + választó).
+Két katalógus típusonként (film, sorozat), extra beállítás nélkül, így a
+Nuvio magától kezdőlapsorként mutatja őket:
+- „🔥 nCore népszerű”: a jobb oldali lista és a „Legaktívabb” borítók;
+- „⭐ nCore staff ajánló”: a „Staff által jelölt” borítók.
 
 Egy cím egy csempe. Ha az nCore-adatlapon van IMDb-link, a csempe a rendes
 adatlapot nyitja (ott a „nCore-keresés (TorBox)” fül adja a forrásokat);
@@ -18,8 +18,8 @@ from app.modules.indexer_definitions.schemas.internal import (
     IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
 )
-from app.modules.stremio.enums import ContentType, ExtraName
-from app.modules.stremio.schemas import ManifestCatalog, ManifestExtra, MetaPreview
+from app.modules.stremio.enums import ContentType
+from app.modules.stremio.schemas import ManifestCatalog, MetaPreview
 from app.modules.torbox_play.release import Release, parse_release
 from app.modules.torbox_play.service import TorboxPlayService
 from app.modules.torbox_play.stremio import (
@@ -29,14 +29,13 @@ from app.modules.torbox_play.stremio import (
     poster_for,
 )
 
-CATALOG_ID = "ncore-ajanlo"
-CATALOG_NAME = "nCore-ajánló"
-GENRE_POPULAR = "Népszerű"
-GENRE_STAFF = "Staff ajánló"
+POPULAR_ID = "ncore-nepszeru"
+STAFF_ID = "ncore-staff"
+CATALOG_NAMES = {POPULAR_ID: "🔥 nCore népszerű", STAFF_ID: "⭐ nCore staff ajánló"}
 MAX_TILES = 40
 IMDB_WAIT = 12.0
 
-_GROUPS = {GENRE_POPULAR: ("nepszeru", "aktiv"), GENRE_STAFF: ("staff",)}
+_GROUPS = {POPULAR_ID: ("nepszeru", "aktiv"), STAFF_ID: ("staff",)}
 _LABELS = {
     "nepszeru": "🔥 Most népszerű az nCore-on",
     "aktiv": "📈 A legaktívabbak között az nCore-on",
@@ -49,20 +48,14 @@ _SERIES_CATEGORY = {"HD": "hdser", "SD": "xvidser", "DVD": "dvdser", "DVD9": "dv
 
 def manifest_catalogs() -> list[ManifestCatalog]:
     return [
-        ManifestCatalog(
-            id=CATALOG_ID,
-            name=CATALOG_NAME,
-            type=kind,
-            extra=[
-                ManifestExtra(
-                    name=ExtraName.GENRE,
-                    is_required=True,
-                    options=[GENRE_POPULAR, GENRE_STAFF],
-                )
-            ],
-        )
+        ManifestCatalog(id=catalog_id, name=name, type=kind)
+        for catalog_id, name in CATALOG_NAMES.items()
         for kind in (ContentType.MOVIE, ContentType.SERIES)
     ]
+
+
+def is_ajanlo(catalog_id: str) -> bool:
+    return catalog_id in CATALOG_NAMES
 
 
 @dataclass
@@ -116,9 +109,9 @@ def _key(kind: str, release: Release) -> str:
 
 
 async def catalog(
-    service: TorboxPlayService, kind: str, genre: str | None
+    service: TorboxPlayService, kind: str, catalog_id: str
 ) -> list[MetaPreview]:
-    groups = _GROUPS.get(genre or "")
+    groups = _GROUPS.get(catalog_id)
     if groups is None or not service.enabled:
         return []
     section = "film" if kind == ContentType.MOVIE.value else "sorozat"

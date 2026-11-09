@@ -365,16 +365,13 @@ def test_manifest(client: TestClient) -> None:
     assert [(c["id"], c["type"]) for c in manifest["catalogs"]] == [
         ("ncore-kereses", "movie"),
         ("ncore-kereses", "series"),
-        ("ncore-ajanlo", "movie"),
-        ("ncore-ajanlo", "series"),
+        ("ncore-nepszeru", "movie"),
+        ("ncore-nepszeru", "series"),
+        ("ncore-staff", "movie"),
+        ("ncore-staff", "series"),
     ]
-    # Kötelező „genre” → nem kezdőlapsor, de gyűjteménymappába felvehető.
-    genre = manifest["catalogs"][2]["extra"][0]
-    assert genre == {
-        "name": "genre",
-        "isRequired": True,
-        "options": ["Népszerű", "Staff ajánló"],
-    }
+    # Az ajánló sorok extra nélkül → a Nuvio magától kezdőlapsorként mutatja.
+    assert all("extra" not in c for c in manifest["catalogs"][2:])
     assert manifest["catalogs"][0]["extra"][0]["isRequired"] is True
     # Forrás a rendes (tt…) adatlapokhoz is, adatlap csak a sajátjainkhoz.
     stream_resource = next(
@@ -574,17 +571,14 @@ def test_play_auto_uploads_and_picks_largest_file(
     assert client.get(base("/play/222/x"), follow_redirects=False).status_code == 404
 
 
-def ajanlo(client: TestClient, kind: str, genre: str) -> list[dict[str, Any]]:
-    from urllib.parse import quote
-
-    path = f"/catalog/{kind}/ncore-ajanlo/genre={quote(genre)}.json"
-    return client.get(base(path)).json()["metas"]
+def ajanlo(client: TestClient, kind: str, catalog_id: str) -> list[dict[str, Any]]:
+    return client.get(base(f"/catalog/{kind}/{catalog_id}.json")).json()["metas"]
 
 
 def test_ajanlo_popular_movies_merge_versions_and_use_imdb(
     client: TestClient, service: TorboxPlayService
 ) -> None:
-    metas = ajanlo(client, "movie", "Népszerű")
+    metas = ajanlo(client, "movie", "ncore-nepszeru")
     by_id = {m["id"]: m for m in metas}
     # 222 + 223 ugyanaz a film → egy csempe, IMDb-vel a rendes adatlapra.
     assert set(by_id) == {"tt1", "stremhu-tb:ncore:302h", "stremhu-tb:ncore:301"}
@@ -601,23 +595,27 @@ def test_ajanlo_popular_movies_merge_versions_and_use_imdb(
 
 
 def test_ajanlo_staff_and_series(client: TestClient) -> None:
-    staff = ajanlo(client, "movie", "Staff ajánló")
+    staff = ajanlo(client, "movie", "ncore-staff")
     assert [m["name"] for m in staff] == ["Classic Film (1975)"]
     assert staff[0]["description"].startswith("⭐")
-    series = ajanlo(client, "series", "Népszerű")
+    series = ajanlo(client, "series", "ncore-nepszeru")
     assert [(m["id"], m["name"]) for m in series] == [("tt5", "MobLand")]
     assert "2 rész" in series[0]["description"]
 
 
-def test_ajanlo_is_cached_and_needs_genre(
+def test_ajanlo_is_cached_and_paged_once(
     client: TestClient, service: TorboxPlayService
 ) -> None:
     ncore = service._definitions.ncore  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
-    ajanlo(client, "movie", "Népszerű")
-    ajanlo(client, "series", "Népszerű")
-    ajanlo(client, "movie", "Népszerű")
+    ajanlo(client, "movie", "ncore-nepszeru")
+    ajanlo(client, "series", "ncore-nepszeru")
+    ajanlo(client, "movie", "ncore-nepszeru")
     assert ncore.recommended_calls == 1
     # Az IMDb-adatlapot címenként egyszer kéri le.
     assert ncore.details.count("222") == 1
-    assert ajanlo(client, "movie", "Ismeretlen") == []
-    assert client.get(base("/catalog/movie/ncore-ajanlo.json")).json() == {"metas": []}
+    assert ajanlo(client, "movie", "ismeretlen") == []
+    # A kezdőlap lapozása (skip) nem ad duplikátumot.
+    more = client.get(base("/catalog/movie/ncore-nepszeru/skip=20.json")).json()
+    assert more == {"metas": []}
+    first = client.get(base("/catalog/movie/ncore-nepszeru/skip=0.json")).json()
+    assert len(first["metas"]) == 3

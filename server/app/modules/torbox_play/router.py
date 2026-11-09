@@ -82,8 +82,13 @@ def manifest(settings: Settings, _: User) -> Manifest:
 @router.get(
     "/catalog/{media_type}/{catalog_id}.json", response_model=StremioCatalogResponse
 )
-def catalog(media_type: str, catalog_id: str, _: User) -> StremioCatalogResponse:
-    # A keresés kötelező, kereső nélkül üres a sor.
+async def catalog(
+    media_type: str, catalog_id: str, service: Service, _: User
+) -> StremioCatalogResponse:
+    # Az ajánló kezdőlapsor; a keresőhöz kötelező a keresett szöveg.
+    if media_type in ("movie", "series") and ajanlo.is_ajanlo(catalog_id):
+        metas = await ajanlo.catalog(service, media_type, catalog_id)
+        return StremioCatalogResponse(metas=metas)
     return StremioCatalogResponse(metas=[])
 
 
@@ -96,8 +101,11 @@ async def catalog_with_extra(
 ) -> StremioCatalogResponse:
     if media_type not in ("movie", "series"):
         return StremioCatalogResponse(metas=[])
-    if catalog_id == ajanlo.CATALOG_ID:
-        metas = await ajanlo.catalog(service, media_type, _extra(extra, "genre"))
+    if ajanlo.is_ajanlo(catalog_id):
+        # Egy oldal van; a további oldalak (skip) üresek.
+        if (_extra(extra, "skip") or "0") not in ("", "0"):
+            return StremioCatalogResponse(metas=[])
+        metas = await ajanlo.catalog(service, media_type, catalog_id)
         return StremioCatalogResponse(metas=metas)
     if catalog_id != adapter.CATALOG_ID:
         return StremioCatalogResponse(metas=[])
