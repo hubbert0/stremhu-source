@@ -36,6 +36,11 @@ TILES = {
     "natgeo": ("National Geographic", "Sorozatok", "1f9ed", ((255, 202, 40), (191, 54, 12))),
     "curiosity": ("CuriosityStream", "Filmek és sorozatok", "1f4a1", ((0, 188, 212), (40, 53, 147))),
     "magellan": ("MagellanTV", "Filmek és sorozatok", "1f52d", ((255, 112, 67), (106, 27, 154))),
+    # nCore-ajánló (a StremHU nCore-keresés bővítményének kezdőlapsorai)
+    "ncore-nepszeru-filmek": ("Népszerű filmek", "Ami most megy az nCore-on", "1f525", ((255, 138, 101), (183, 28, 28))),
+    "ncore-nepszeru-sorozatok": ("Népszerű sorozatok", "Friss részek az nCore-ról", "1f37f", ((171, 71, 188), (49, 27, 146))),
+    "ncore-staff-filmek": ("Staff ajánló – filmek", "Az nCore csapatának válogatása", "1f3c6", ((255, 213, 79), (230, 81, 0))),
+    "ncore-staff-sorozatok": ("Staff ajánló – sorozatok", "Az nCore csapatának válogatása", "1f3ac", ((77, 182, 172), (13, 71, 161))),
     # Streamingszolgáltatók sor – a kijelölt (színes) változat
     "szinhaz-szines": ("Színház és musical", "Broadway, felvett előadások", "1f3ad", ((236, 64, 122), (74, 20, 140))),
 }

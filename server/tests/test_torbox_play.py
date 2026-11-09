@@ -370,8 +370,11 @@ def test_manifest(client: TestClient) -> None:
         ("ncore-staff", "movie"),
         ("ncore-staff", "series"),
     ]
-    # Az ajánló sorok extra nélkül → a Nuvio magától kezdőlapsorként mutatja.
-    assert all("extra" not in c for c in manifest["catalogs"][2:])
+    # Egy kötelező „nCore” műfaj → nem kezdőlapsor, de gyűjteménybe felvehető.
+    for c in manifest["catalogs"][2:]:
+        assert c["extra"] == [
+            {"name": "genre", "isRequired": True, "options": ["nCore"]}
+        ]
     assert manifest["catalogs"][0]["extra"][0]["isRequired"] is True
     # Forrás a rendes (tt…) adatlapokhoz is, adatlap csak a sajátjainkhoz.
     stream_resource = next(
@@ -572,7 +575,8 @@ def test_play_auto_uploads_and_picks_largest_file(
 
 
 def ajanlo(client: TestClient, kind: str, catalog_id: str) -> list[dict[str, Any]]:
-    return client.get(base(f"/catalog/{kind}/{catalog_id}.json")).json()["metas"]
+    path = f"/catalog/{kind}/{catalog_id}/genre=nCore.json"
+    return client.get(base(path)).json()["metas"]
 
 
 def test_ajanlo_popular_movies_merge_versions_and_use_imdb(
@@ -615,7 +619,11 @@ def test_ajanlo_is_cached_and_paged_once(
     assert ncore.details.count("222") == 1
     assert ajanlo(client, "movie", "ismeretlen") == []
     # A kezdőlap lapozása (skip) nem ad duplikátumot.
-    more = client.get(base("/catalog/movie/ncore-nepszeru/skip=20.json")).json()
+    more = client.get(
+        base("/catalog/movie/ncore-nepszeru/genre=nCore&skip=20.json")
+    ).json()
     assert more == {"metas": []}
-    first = client.get(base("/catalog/movie/ncore-nepszeru/skip=0.json")).json()
+    first = client.get(
+        base("/catalog/movie/ncore-nepszeru/genre=nCore&skip=0.json")
+    ).json()
     assert len(first["metas"]) == 3

@@ -1,0 +1,85 @@
+[
+  {
+    "id": "hu-ncore",
+    "title": "nCore-ajánló",
+    "pinToTop": true,
+    "viewMode": "ROWS",
+    "showAllTab": true,
+    "backdropImageUrl": null,
+    "focusGlowEnabled": false,
+    "folders": [
+      {
+        "id": "hu-ncore-nepszeru-filmek",
+        "title": "Népszerű filmek",
+        "hideTitle": true,
+        "tileShape": "LANDSCAPE",
+        "coverImageUrl": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-gyujtemenyek/kepek/ncore-nepszeru-filmek.png?v=1",
+        "focusGifEnabled": false,
+        "sources": [
+          {
+            "provider": "addon",
+            "addonId": "hu.stremhu-source.ncore-torbox",
+            "type": "movie",
+            "catalogId": "ncore-nepszeru",
+            "genre": "nCore",
+            "title": "Népszerű filmek"
+          }
+        ]
+      },
+      {
+        "id": "hu-ncore-nepszeru-sorozatok",
+        "title": "Népszerű sorozatok",
+        "hideTitle": true,
+        "tileShape": "LANDSCAPE",
+        "coverImageUrl": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-gyujtemenyek/kepek/ncore-nepszeru-sorozatok.png?v=1",
+        "focusGifEnabled": false,
+        "sources": [
+          {
+            "provider": "addon",
+            "addonId": "hu.stremhu-source.ncore-torbox",
+            "type": "series",
+            "catalogId": "ncore-nepszeru",
+            "genre": "nCore",
+            "title": "Népszerű sorozatok"
+          }
+        ]
+      },
+      {
+        "id": "hu-ncore-staff-filmek",
+        "title": "Staff ajánló – filmek",
+        "hideTitle": true,
+        "tileShape": "LANDSCAPE",
+        "coverImageUrl": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-gyujtemenyek/kepek/ncore-staff-filmek.png?v=1",
+        "focusGifEnabled": false,
+        "sources": [
+          {
+            "provider": "addon",
+            "addonId": "hu.stremhu-source.ncore-torbox",
+            "type": "movie",
+            "catalogId": "ncore-staff",
+            "genre": "nCore",
+            "title": "Staff ajánló – filmek"
+          }
+        ]
+      },
+      {
+        "id": "hu-ncore-staff-sorozatok",
+        "title": "Staff ajánló – sorozatok",
+        "hideTitle": true,
+        "tileShape": "LANDSCAPE",
+        "coverImageUrl": "https://raw.githubusercontent.com/hubbert0/stremhu-source/torbox/deploy/nuvio-gyujtemenyek/kepek/ncore-staff-sorozatok.png?v=1",
+        "focusGifEnabled": false,
+        "sources": [
+          {
+            "provider": "addon",
+            "addonId": "hu.stremhu-source.ncore-torbox",
+            "type": "series",
+            "catalogId": "ncore-staff",
+            "genre": "nCore",
+            "title": "Staff ajánló – sorozatok"
+          }
+        ]
+      }
+    ]
+  }
+]

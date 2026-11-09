@@ -1,7 +1,8 @@
 """nCore-ajánló sorok a Nuvio kezdőlapján.
 
-Két katalógus típusonként (film, sorozat), extra beállítás nélkül, így a
-Nuvio magától kezdőlapsorként mutatja őket:
+Két katalógus típusonként (film, sorozat), egyetlen kötelező „nCore” műfaj-
+opcióval: így nem lesz belőlük külön kezdőlapsor, a Nuvio-gyűjtemény kártyái
+(deploy/nuvio-gyujtemenyek/ncore.json) viszont megnyitják őket:
 - „🔥 nCore népszerű”: a jobb oldali lista és a „Legaktívabb” borítók;
 - „⭐ nCore staff ajánló”: a „Staff által jelölt” borítók.
 
@@ -18,8 +19,8 @@ from app.modules.indexer_definitions.schemas.internal import (
     IndexerDefinitionRecommendedItem,
     IndexerDefinitionSearchHit,
 )
-from app.modules.stremio.enums import ContentType
-from app.modules.stremio.schemas import ManifestCatalog, MetaPreview
+from app.modules.stremio.enums import ContentType, ExtraName
+from app.modules.stremio.schemas import ManifestCatalog, ManifestExtra, MetaPreview
 from app.modules.torbox_play.release import Release, parse_release
 from app.modules.torbox_play.service import TorboxPlayService
 from app.modules.torbox_play.stremio import (
@@ -31,6 +32,7 @@ from app.modules.torbox_play.stremio import (
 
 POPULAR_ID = "ncore-nepszeru"
 STAFF_ID = "ncore-staff"
+GENRE = "nCore"
 CATALOG_NAMES = {POPULAR_ID: "🔥 nCore népszerű", STAFF_ID: "⭐ nCore staff ajánló"}
 MAX_TILES = 40
 IMDB_WAIT = 12.0
@@ -47,8 +49,17 @@ _SERIES_CATEGORY = {"HD": "hdser", "SD": "xvidser", "DVD": "dvdser", "DVD9": "dv
 
 
 def manifest_catalogs() -> list[ManifestCatalog]:
+    # Egyetlen kötelező „genre” opció: így a Nuvio nem tesz belőle külön
+    # kezdőlapsort, de a gyűjteménymappa (Mesék-szerű kártya) felveheti.
     return [
-        ManifestCatalog(id=catalog_id, name=name, type=kind)
+        ManifestCatalog(
+            id=catalog_id,
+            name=name,
+            type=kind,
+            extra=[
+                ManifestExtra(name=ExtraName.GENRE, is_required=True, options=[GENRE])
+            ],
+        )
         for catalog_id, name in CATALOG_NAMES.items()
         for kind in (ContentType.MOVIE, ContentType.SERIES)
     ]

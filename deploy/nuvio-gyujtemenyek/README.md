@@ -8,7 +8,8 @@ TMDB-kapcsolatából jönnek, nem kell hozzá külön bővítmény vagy kulcs.
 | `streaming.json` | **Streamingszolgáltatók** |
 | `mesek.json` | **Mesék** |
 | `ismeretterjeszto.json` | **Ismeretterjesztő** |
-| `osszes.json` | mind a három, ebben a sorrendben – a telefonos appba ezt érdemes importálni |
+| `ncore.json` | **nCore-ajánló** (kell hozzá a StremHU nCore-keresés (TorBox) bővítménye) |
+| `osszes.json` | mind a négy, ebben a sorrendben – a telefonos appba ezt érdemes importálni |
 
 ## Streamingszolgáltatók
 
@@ -91,3 +92,21 @@ színátmenet, [Noto Emoji](https://github.com/googlefonts/noto-emoji) 3D
 rajzok (Apache 2.0) és [Nunito](https://fonts.google.com/specimen/Nunito)
 betű (SIL OFL). A szkript a betűt és a rajzokat a `kepek/forras/` mappába
 tölti le (nincs a repóban).
+
+## nCore-ajánló
+
+Négy kártya az nCore ajánló oldalából (a StremHU **nCore-keresés (TorBox)**
+bővítménye adja, annak telepítve kell lennie):
+
+| Csempe | Tartalom |
+|---|---|
+| Népszerű filmek | a jobb oldali „népszerű” lista és a „Legaktívabb” borítók filmjei |
+| Népszerű sorozatok | ugyanez a sorozatoknál, a részek címenként összevonva |
+| Staff ajánló – filmek | a „Staff által jelölt” filmek |
+| Staff ajánló – sorozatok | a „Staff által jelölt” sorozatok |
+
+A címek 3 óránként frissülnek. IMDb-linkes címnél a rendes adatlap nyílik (az
+nCore-fül adja a forrásokat), különben nCore-csempe.
+
+**Importálás:** a Nuvio importja az összes meglévő gyűjteményt lecseréli, ezért
+az `osszes.json`-t érdemes betölteni (a meglévő hármat is tartalmazza).
