@@ -6,6 +6,8 @@ docker compose exec stremhu python -m app.modules.torbox_play.selftest "X-Faktor
 import asyncio
 import sys
 
+# Az összes adatbázis-modell betöltése (a szerver ugyanígy indul).
+import app.main  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from app.modules.torbox_play.service import kind_of
 from app.modules.torbox_play.stremio import get_torbox_play_service
 
