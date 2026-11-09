@@ -204,7 +204,8 @@ AIOStreams|ts-aiostreams|aiostreams|$(env_get AIOSTREAMS_HOSTNAME)|/api/v1/healt
 TMDB-addon|ts-tmdb|tmdb|$(env_get TMDB_HOSTNAME)|/manifest.json
 LeLibrary|ts-lelibrary|lelibrary|$(env_get LELIBRARY_HOSTNAME)|/health
 Magyar feliratok|ts-felirat|feliratok|$(env_get FELIRAT_HOSTNAME)|/health
-Emby-könyvtár|ts-emby|emby|$(env_get EMBY_HOSTNAME)|/health"
+Emby-könyvtár|ts-emby|emby|$(env_get EMBY_HOSTNAME)|/health
+YouTube-mesék|ts-youtube|youtube|$(env_get YOUTUBE_HOSTNAME)|/health"
 
 check_all() {
   FAILING=""

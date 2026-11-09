@@ -73,6 +73,7 @@ HOSTS = {
     "LeLibrary": "lelibrary",
     "Magyar feliratok": "felirat",
     "Emby-könyvtár": "emby",
+    "YouTube-mesék": "youtube",
 }
 PATHS = {
     "StremHU": "/",
@@ -81,6 +82,7 @@ PATHS = {
     "LeLibrary": "/health",
     "Magyar feliratok": "/health",
     "Emby-könyvtár": "/health",
+    "YouTube-mesék": "/health",
 }
 
 
@@ -142,6 +144,7 @@ class Env:
             "aiostreams": "AIOStreams",
             "tmdb": "TMDB-addon",
             "emby": "Emby-könyvtár",
+            "youtube": "YouTube-mesék",
         }
         lines = [f"{url(names[k])} {v}" for k, v in codes.items()]
         (self.fake / "kodok").write_text("\n".join(lines) + "\n")
@@ -157,6 +160,7 @@ class Env:
                     "aiostreams",
                     "tmdb",
                     "emby",
+                    "youtube",
                 )
             }
         )

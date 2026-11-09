@@ -71,6 +71,7 @@ class Hostnames(BaseModel):
     lelibrary: str = Field(default="lelibrary", pattern=r"^[a-z0-9-]{1,63}$")
     felirat: str = Field(default="felirat", pattern=r"^[a-z0-9-]{1,63}$")
     emby: str = Field(default="emby", pattern=r"^[a-z0-9-]{1,63}$")
+    youtube: str = Field(default="youtube", pattern=r"^[a-z0-9-]{1,63}$")
 
 
 class Settings(BaseModel):

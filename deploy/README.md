@@ -8,7 +8,7 @@ Ez a leírás végigvezet a rendszer telepítésén, beállításán és mindenn
 2. [Fogalmak](#2-fogalmak)
 3. [Amire szükséged lesz](#3-amire-szükséged-lesz)
 4. [Telepítés a szerverre](#4-telepítés-a-szerverre)
-5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary, feliratok, Emby](#5-első-beállítás)
+5. [Első beállítás: StremHU, AIOStreams, TMDB, Stremio, LeLibrary, feliratok, Emby, YouTube-mesék](#5-első-beállítás)
 6. [Címek és jelszavak – mi hol van?](#6-címek-és-jelszavak)
 7. [A `.env` fájl](#7-a-env-fájl)
 8. [TorBox-helykezelés](#8-torbox-helykezelés)
@@ -46,6 +46,7 @@ Stremio ◄──────────── lejátszás közvetlenül a TorB
 | `lelibrary` + `ts-lelibrary` + `lelibrary-db` + `lelibrary-redis` | LeLibrary: a TorBoxon lévő tartalom poszterekkel a Stremio kezdőlapján | nyilvános HTTPS (Funnel) |
 | `feliratok` + `ts-felirat` | magyar feliratok a feliratok.eu-ról (Stremio-felirataddon) | nyilvános HTTPS (Funnel) |
 | `emby` + `ts-emby` | Emby-könyvtár: a saját Emby-szerverek filmjei és sorozatai a Stremióban | nyilvános HTTPS (Funnel), titkos linkkel |
+| `youtube` + `ts-youtube` | YouTube-mesék: ingyenes magyar mesék a hivatalos YouTube-csatornákról (forrás és saját sor) | nyilvános HTTPS (Funnel) |
 | `gatus` | állapotfigyelő, hiba esetén értesítés a telefonra | csak a tailnetről, vagy SSH-alagúton |
 | `backrest` + `mentes-dump` | titkosított napi mentés felhőtárhelyre, egységes adatbázis-másolatokkal | csak a tailnetről, vagy SSH-alagúton |
 | `pult` + `terminal` + `ts-pult` | Szerverpult és webes terminál | csak a tailnetről |
@@ -292,6 +293,26 @@ Ellenőrzés: a `docker compose exec emby python -m app.selftest` a végén kií
 - ha az Emby-könyvtár az **AIOStreamsen keresztül** van bekötve: az AIOStreams beállítóoldalán a katalógusok között kapcsold be (és tetszés szerint told előre) a két *Mesék* sort, mentsd, majd a Stremióban az **AIOStreamst** egyszer telepítsd újra;
 - ha **közvetlenül a Stremióban** van: az **Emby-könyvtárat** telepítsd újra (Addons → Emby-könyvtár → *Uninstall*, majd a linkkel újra *Install*).
 
+### 5.8 YouTube-mesék – ingyenes mesék a hivatalos YouTube-csatornákról
+
+Sok régi magyar mese (Magyar népmesék, Mesék Mátyás királyról, Cigánymesék, Bogyó és Babóca, Leo & Fred…) nincs fent torrentként, a jogtulajdonos viszont ingyen feltette a YouTube-ra. Ez a bővítmény ezeket hozza be a Stremióba és a Nuvióba:
+
+- **Forrásként:** ha egy mesét megnyitsz (pl. a Mesék gyűjteményből), és megvan valamelyik beállított csatornán, a források között megjelenik **YouTube** néven. Filmnél a cím és a hossz alapján keres (előzetes, részlet, főcímdal és Shorts kimarad), sorozatnál az epizód címe, a részszám vagy a sorozat nevű lejátszási lista sorrendje alapján.
+- **Saját sorként:** a **YouTube-mesék** katalógus a csatornák lejátszási listáit mutatja, mindegyik egy „sorozat”, a videók a részei. A sor szűrhető csatornára és kereshető.
+- **Csak a beállított csatornákon** keres – alapból hivatalos csatornák: Kecskemetfilm Kids, KEDD, Bogyó és Babóca, M2 Mesetévé, Legendárium (Zete & Rika), Nemzeti Filmintézet. Így nem kerül elő rossz mese vagy jogsértő feltöltés.
+- A lejátszást a Stremio és a Nuvio maga intézi (YouTube-videóként), a szerveren nem megy át semmi.
+
+**Beállítás:**
+
+1. **YouTube API-kulcs** (ingyenes): [console.cloud.google.com](https://console.cloud.google.com) → felül válaszd ki a projektedet (vagy hozz létre egyet) → **APIs & Services → Library** → *YouTube Data API v3* → **Enable**. Utána **APIs & Services → Credentials → Create credentials → API key**. A kulcsnál érdemes beállítani: *API restrictions → Restrict key → YouTube Data API v3*.
+2. A kulcs a `.env`-be: `YOUTUBE_API_KEY=...` (a `nano ~/stremhu-source/deploy/.env` paranccsal), majd `cd ~/stremhu-source/deploy && docker compose up -d youtube ts-youtube`.
+3. Ha a `ts-youtube` még nincs bejelentkezve a Tailscale-be: `docker compose logs ts-youtube` kiírja a belépő linket. Utána a Tailscale adminban a gépnél kapcsold ki a kulcslejáratot (mint a többinél, 4.6).
+4. Pár perc múlva a `https://youtube.<tailnet>/` oldal kiírja a beolvasott csatornákat és a telepítési linket: `https://youtube.<tailnet>/manifest.json`. Ezt add hozzá a Nuvióban (Bővítmények → hozzáadás) és a Stremióban.
+
+**Kvóta:** a YouTube napi 10 000 egységet ad ingyen. A bővítmény naponta egyszer olvassa be a csatornákat (csatornánként néhány tíz egység), a lejátszás és a keresés nem fogyaszt kvótát.
+
+**Saját csatornák:** a `.env`-ben `YOUTUBE_CSATORNAK=alap,@csatornanev,UC...` – az `alap` a beépített lista, mellé vesszővel bármennyi csatorna írható (a csatorna oldalán látszó `@név` vagy az `UC`-vel kezdődő azonosító). Módosítás után `docker compose up -d youtube`. Csak olyan csatornát adj hozzá, amelyik a saját meséit tölti fel.
+
 ## 6. Címek és jelszavak
 
 | Mi | Cím | Belépés | Hol van a jelszó? |
@@ -302,6 +323,7 @@ Ellenőrzés: a `docker compose exec emby python -m app.selftest` a végén kií
 | LeLibrary | `https://lelibrary.<tailnet>/configure` | a beállítás szerkesztő linkje + jelszó | te adtad meg a beállításkor |
 | Magyar feliratok | `https://felirat.<tailnet>` | nincs | – |
 | Emby-könyvtár | titkos link: `docker compose exec emby python -m app.selftest` | nincs (a link a kulcs) | `.env` → `EMBY_ADDON_SECRET`; az Emby-felhasználók: `EMBY1_...`, `EMBY2_...` |
+| YouTube-mesék | `https://youtube.<tailnet>/manifest.json` | nincs | – (`.env` → `YOUTUBE_API_KEY`) |
 | Állapotfigyelő | `https://pult.<tailnet>:8090` (tailnetről) vagy `http://localhost:8090` (SSH-alagúton) | nincs | – |
 | Mentés (Backrest) | `https://pult.<tailnet>:9898` (tailnetről) vagy `http://localhost:9898` (SSH-alagúton) | a Backrestben létrehozott felhasználó | te adtad meg az első belépéskor |
 | Szerverpult | `https://pult.<tailnet>` (csak tailnetről) | `admin` | `.env` → `PULT_PASSWORD` |
@@ -330,6 +352,7 @@ Helye: `~/stremhu-source/deploy/.env`. Szerkesztés: `nano ~/stremhu-source/depl
 | `LELIBRARY_HOSTNAME`, `FELIRAT_HOSTNAME` | a LeLibrary és a felirataddon gépneve a tailneten |
 | `EMBY_HOSTNAME`, `EMBY_ADDON_SECRET` | az Emby-könyvtár gépneve a tailneten és a telepítési link titkos része (generált; ha megváltoztatod, a linket mindenhol cserélni kell) |
 | `EMBY1_NEV`, `EMBY1_URL`, `EMBY1_FELHASZNALO`, `EMBY1_JELSZO` (és `EMBY2_…`, `EMBY3_…`) | az Emby-szerverek ([5.7](#57-emby-könyvtár--saját-emby-szerverek-a-stremióban)) |
+| `YOUTUBE_HOSTNAME`, `YOUTUBE_API_KEY`, `YOUTUBE_CSATORNAK` | a YouTube-mesék gépneve, a YouTube Data API-kulcs és a csatornalista ([5.8](#58-youtube-mesék--ingyenes-mesék-a-hivatalos-youtube-csatornákról)) |
 | `NTFY_TOPIC` | az állapotfigyelő értesítéseinek témája az ntfy alkalmazásban (generált; titokként kezeld) |
 | `LELIBRARY_CONFIG_SECRET`, `LELIBRARY_SELFHOST_SECRET`, `LELIBRARY_DB_PASSWORD` | a LeLibrary titkai (generált) – **első indítás után ne változtasd meg**, különben a mentett beállítások és az adatbázis elérhetetlenné válnak |
 | `STREMHU_IMAGE` | melyik StremHU-image fusson (alapból ennek a forknak a buildje) |

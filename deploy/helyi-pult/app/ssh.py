@@ -70,6 +70,7 @@ def apply_env(settings: Settings, env: dict[str, str]) -> Settings:
         "LELIBRARY_HOSTNAME": "lelibrary",
         "FELIRAT_HOSTNAME": "felirat",
         "EMBY_HOSTNAME": "emby",
+        "YOUTUBE_HOSTNAME": "youtube",
     }
     candidates: list[tuple[str, str | None, str]] = [("TAILNET", None, "tailnet")]
     candidates += [(key, "hostnames", field) for key, field in mapping.items()]

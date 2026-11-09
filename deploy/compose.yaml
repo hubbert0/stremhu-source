@@ -313,6 +313,39 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
+  # ---------------------------------------------------------- YouTube-mesék
+  # Magyar mesék a hivatalos YouTube-csatornákról (README 5.8). Telepítés:
+  # https://${YOUTUBE_HOSTNAME}.${TAILNET}/manifest.json
+  ts-youtube:
+    image: tailscale/tailscale:latest
+    hostname: ${YOUTUBE_HOSTNAME:-youtube}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY:-}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_SERVE_CONFIG=/config/youtube.json
+      - TS_USERSPACE=true
+    volumes:
+      - ts-youtube-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    restart: unless-stopped
+
+  youtube:
+    image: ${YOUTUBE_IMAGE:-ghcr.io/hubbert0/stremhu-youtube:latest}
+    build: ./youtube
+    network_mode: service:ts-youtube
+    depends_on:
+      - ts-youtube
+    environment:
+      - TZ=Europe/Budapest
+      - YOUTUBE_BASE_URL=https://${YOUTUBE_HOSTNAME:-youtube}.${TAILNET}
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY:-}
+      - YOUTUBE_CSATORNAK=${YOUTUBE_CSATORNAK:-alap}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+    volumes:
+      - youtube-data:/data
+    mem_limit: 256m
+    restart: unless-stopped
+
   # ---------------------------------------------------------- Szerverpult
   # Csak a tailnetről érhető el (a pult.json-ban nincs Funnel), és a
   # .env-ben lévő PULT_USER / PULT_PASSWORD kell hozzá. Root jogú
@@ -355,6 +388,7 @@ services:
       - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
       - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
       - EMBY_HOSTNAME=${EMBY_HOSTNAME:-emby}
+      - YOUTUBE_HOSTNAME=${YOUTUBE_HOSTNAME:-youtube}
       - REPO_DIR=${REPO_DIR:-/root/stremhu-source}
     volumes:
       # A konténerek kezeléséhez és a frissítéshez (git pull + compose).
@@ -418,6 +452,7 @@ services:
       - LELIBRARY_HOSTNAME=${LELIBRARY_HOSTNAME:-lelibrary}
       - FELIRAT_HOSTNAME=${FELIRAT_HOSTNAME:-felirat}
       - EMBY_HOSTNAME=${EMBY_HOSTNAME:-emby}
+      - YOUTUBE_HOSTNAME=${YOUTUBE_HOSTNAME:-youtube}
       - NTFY_TOPIC=${NTFY_TOPIC:?Futtasd az install.sh-t}
     volumes:
       - ./gatus/config.yaml:/config/config.yaml:ro
@@ -458,6 +493,7 @@ services:
       - ts-lelibrary-state:/userdata/tailscale/lelibrary:ro
       - ts-felirat-state:/userdata/tailscale/felirat:ro
       - ts-emby-state:/userdata/tailscale/emby:ro
+      - ts-youtube-state:/userdata/tailscale/youtube:ro
       - ts-pult-state:/userdata/tailscale/pult:ro
     mem_limit: 512m
     restart: unless-stopped
@@ -509,6 +545,8 @@ volumes:
   felirat-data:
   ts-emby-state:
   emby-data:
+  ts-youtube-state:
+  youtube-data:
   gatus-data:
   backrest-data:
   backrest-config:

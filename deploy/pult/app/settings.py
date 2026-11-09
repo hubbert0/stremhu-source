@@ -43,5 +43,6 @@ def load_settings() -> Settings:
             "lelibrary": os.environ.get("LELIBRARY_HOSTNAME", "lelibrary"),
             "felirat": os.environ.get("FELIRAT_HOSTNAME", "felirat"),
             "emby": os.environ.get("EMBY_HOSTNAME", "emby"),
+            "youtube": os.environ.get("YOUTUBE_HOSTNAME", "youtube"),
         },
     )

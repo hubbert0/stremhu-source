@@ -75,6 +75,12 @@ def default_services(settings: Settings) -> list[Service]:
                 "A saját Emby-szerverek a Stremio kezdőlapján",
             ),
             _service(
+                "YouTube-mesék",
+                f"https://{host['youtube']}.{tn}/",
+                "Szerver",
+                "Magyar mesék a hivatalos YouTube-csatornákról",
+            ),
+            _service(
                 "Állapotfigyelő",
                 f"https://{host['pult']}.{tn}:8090",
                 "Szerver",

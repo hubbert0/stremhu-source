@@ -73,6 +73,9 @@ ensure_line PULT_USER "admin"
 ensure_line LELIBRARY_HOSTNAME "lelibrary"
 ensure_line FELIRAT_HOSTNAME "felirat"
 ensure_line EMBY_HOSTNAME "emby"
+ensure_line YOUTUBE_HOSTNAME "youtube"
+ensure_line YOUTUBE_API_KEY ""
+ensure_line YOUTUBE_CSATORNAK "alap"
 ensure_line REPO_DIR "${DIR}"
 ensure_line ONJAVITO "1"
 ensure_line AUTO_FRISSITES "1"
@@ -130,6 +133,7 @@ ask_key() {
 }
 ask_key TORBOX_API_KEY "TorBox API-kulcs a seed-takarításhoz"
 ask_key TMDB_API_KEY "TMDB API-kulcs a saját TMDB-addonhoz"
+ask_key YOUTUBE_API_KEY "YouTube Data API-kulcs a YouTube-mesékhez"
 
 echo "Konténerek letöltése és indítása..."
 # Ha egy image nem tölthető le (pl. a pult), az "up" helyben építi meg.
@@ -175,7 +179,7 @@ docker compose ps
 
 # Ha egy Tailscale-konténer még nincs bejelentkezve, kiírjuk a belépő linket.
 sleep 15
-for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-felirat ts-emby ts-pult; do
+for TS in ts-stremhu ts-aiostreams ts-tmdb ts-lelibrary ts-felirat ts-emby ts-youtube ts-pult; do
   STATUS="$(docker compose exec -T "${TS}" tailscale status 2>/dev/null || true)"
   if printf '%s' "${STATUS}" | grep -q 'Logged out\|NeedsLogin'; then
     echo
@@ -191,6 +195,7 @@ TMDB_NOW="$(grep '^TMDB_HOSTNAME=' .env | cut -d= -f2)"
 PULT_NOW="$(grep '^PULT_HOSTNAME=' .env | cut -d= -f2)"
 LEL_NOW="$(grep '^LELIBRARY_HOSTNAME=' .env | cut -d= -f2)"
 FEL_NOW="$(grep '^FELIRAT_HOSTNAME=' .env | cut -d= -f2)"
+YT_NOW="$(grep '^YOUTUBE_HOSTNAME=' .env | cut -d= -f2)"
 NTFY_NOW="$(grep '^NTFY_TOPIC=' .env | cut -d= -f2)"
 PULT_USER_NOW="$(grep '^PULT_USER=' .env | cut -d= -f2)"
 PULT_PASS_NOW="$(grep '^PULT_PASSWORD=' .env | cut -d= -f2)"
@@ -203,6 +208,7 @@ echo "  TMDB-addon: https://${TMDB_NOW}.${TAILNET_NOW}/configure"
 echo "  LeLibrary:  https://${LEL_NOW}.${TAILNET_NOW}/configure"
 echo "  Feliratok:  https://${FEL_NOW}.${TAILNET_NOW}/manifest.json"
 echo "  Emby-könyvtár (titkos link): docker compose exec emby python -m app.selftest"
+echo "  YouTube-mesék: https://${YT_NOW}.${TAILNET_NOW}/manifest.json"
 echo "AIOStreams-jelszó (ha elfelejtenéd):  grep AIOSTREAMS_AUTH ${DIR}/deploy/.env"
 echo
 echo "Szerverpult (csak a tailnetedről):"
