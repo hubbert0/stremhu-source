@@ -19,6 +19,7 @@ from app.modules.indexer_definitions.schemas.internal import (
     AuthSessionError,
     IndexerDefinitionFindTorrentsResult,
     IndexerDefinitionLoginPayload,
+    IndexerDefinitionSearchHit,
     IndexerDefinitionTorrent,
 )
 from app.modules.media_attributes.constants import MediaAttributeKey
@@ -138,6 +139,59 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
             next_page=current_page + 1 if current_page < last_page else None,
         )
 
+    async def search_by_name(
+        self, query: str, max_pages: int = 2
+    ) -> list[IndexerDefinitionSearchHit]:
+        """Keresés a kiadások nevében (nCore: miben=name), seederek szerint."""
+        hits: list[IndexerDefinitionSearchHit] = []
+        for page in range(1, max_pages + 1):
+            response = await self._client.get(
+                "/torrents.php",
+                params={
+                    "oldal": str(page),
+                    "miben": "name",
+                    "mire": query,
+                    "miszerint": "seeders",
+                    "hogyan": "DESC",
+                    "jsons": True,
+                    "tipus": "all",
+                },
+            )
+            try:
+                data = response.json()
+            except Exception:
+                tree = LexborHTMLParser(response.text)
+                error_node = tree.css_first(".lista_mini_error")
+                error_text = error_node.text(strip=True) if error_node else None
+                if error_text == "Nincs találat!":
+                    break
+                raise Exception(error_text or "Ismeretlen nCore hiba.")
+
+            for torrent in data.get("results", []):
+                hits.append(
+                    IndexerDefinitionSearchHit(
+                        torrent_id=str(torrent["torrent_id"]),
+                        name=str(
+                            torrent.get("release_name")
+                            or torrent.get("name")
+                            or torrent.get("title")
+                            or ""
+                        ),
+                        category=str(torrent.get("category") or ""),
+                        size=_to_int(torrent.get("size")),
+                        seeders=_to_int(torrent.get("seeders")),
+                        leechers=_to_int(torrent.get("leechers")),
+                        imdb_id=torrent.get("imdb_id") or None,
+                        download_url=torrent.get("download_url") or None,
+                    )
+                )
+
+            total = _to_int(data.get("total_results"))
+            per_page = _to_int(data.get("perpage")) or 1
+            if page * per_page >= total:
+                break
+        return hits
+
     async def _fetch_torrent(
         self,
         torrent_id: str,
@@ -187,6 +241,13 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
         if "hun" in category:
             return MediaAttributeKey.HUN
         return MediaAttributeKey.ENG
+
+
+def _to_int(value: object) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 _DETAILS_LINK = 'a[href*="torrents.php?action=details&id="]'

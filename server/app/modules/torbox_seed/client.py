@@ -128,3 +128,20 @@ class TorboxClient:
         except ValueError:
             detail = ""
         return (data if isinstance(data, dict) else {}), detail
+
+    async def request_download(self, torrent_id: int, file_id: int) -> str:
+        """Közvetlen (CDN) letöltési link egy kész torrent egy fájljához."""
+        async with self._client() as client:
+            response = await client.get(
+                "/v1/api/torrents/requestdl",
+                params={
+                    "token": self._api_key,
+                    "torrent_id": torrent_id,
+                    "file_id": file_id,
+                    "redirect": "false",
+                },
+            )
+        data = self._unwrap(response)
+        if not isinstance(data, str) or not data.startswith("http"):
+            raise TorboxApiError("A TorBox nem adott letöltési linket.")
+        return data

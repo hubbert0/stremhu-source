@@ -313,6 +313,18 @@ Sok régi magyar mese (Magyar népmesék, Mesék Mátyás királyról, Cigányme
 
 **Saját csatornák:** a `.env`-ben `YOUTUBE_CSATORNAK=alap,@csatornanev,UC...` – az `alap` a beépített lista, mellé vesszővel bármennyi csatorna írható (a csatorna oldalán látszó `@név` vagy az `UC`-vel kezdődő azonosító). Módosítás után `docker compose up -d youtube`. Csak olyan csatornát adj hozzá, amelyik a saját meséit tölti fel.
 
+### 5.9 nCore-keresés a Nuvióban (TorBoxszal)
+
+A Nuvio csak azt találja meg, ami a TMDB-n szerepel. Ami nincs ott (új évad, magyar műsor, sport, rosszul azonosított kiadás), azt ezzel a külön bővítménnyel közvetlenül az nCore-on keresheted:
+
+- **Telepítés:** StremHU → kezdőlap → **Torrent hozzáadása a TorBoxhoz** → felül az **nCore-keresés a Nuvióban** kártya → másold ki a linket (`https://<stremhu-cím>/api/<API-kulcs>/ncore/manifest.json`), és a Nuvióban add hozzá a Bővítmények közé. A link a saját API-kulcsodat tartalmazza – ne oszd meg.
+- **Keresés:** a Nuvio keresőjébe szabad szöveggel, ahogy az nCore-on is keresnél (pl. `X-Faktor S14E11`, `X-Faktor S14`). A találatok **🔎 nCore-keresés** néven jelennek meg, filmek és sorozatok külön; felnőtt, zenei és egyéb nem videós kategória nem jelenik meg.
+- **Adatlap:** a `.torrent` fájllistájából készül; évadcsomagnál minden rész külön epizód (a minta- és extrafájlok nélkül).
+- **Lejátszás:** ha a torrent már kész a TorBoxon, azonnal indul. Ha nincs fent, a szerver feltölti, és a forrás **„⏳ TorBox tölti: 42%”** néven jelenik meg (egy rövid „még tölti” videó) – pár perc múlva nyisd meg újra. Ugyanazt a torrentet nem tölti fel kétszer. Az nCore-os torrentek seedelését a helykezelés ([8. fejezet](#8-torbox-helykezelés)) ugyanúgy intézi.
+- Kell hozzá a `TORBOX_API_KEY` a `.env`-ben és a StremHU-ban beállított nCore-fiók.
+
+Ellenőrzés a szerveren: `docker compose exec stremhu python -m app.modules.torbox_play.selftest "X-Faktor S14"` – kiírja a találatokat és az első `.torrent` fájllistáját.
+
 ## 6. Címek és jelszavak
 
 | Mi | Cím | Belépés | Hol van a jelszó? |

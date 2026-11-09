@@ -22,6 +22,7 @@ from app.modules.indexer_definitions.schemas.internal import (
     IndexerDefinitionFindTorrentsResult,
     IndexerDefinitionLogin,
     IndexerDefinitionLoginPayload,
+    IndexerDefinitionSearchHit,
     IndexerDefinitionTorrent,
 )
 
@@ -259,6 +260,12 @@ class BaseIndexerDefinition(ABC):
         self, imdb_id: str
     ) -> list[IndexerDefinitionTorrent]:
         return await self._find_all(imdb_id, None, [])
+
+    async def search_by_name(self, query: str) -> list[IndexerDefinitionSearchHit]:
+        """Szabad szöveges keresés a kiadások nevében (nem minden indexer tudja)."""
+        raise NotImplementedError(
+            f"{self.name}: a név szerinti keresés nem támogatott."
+        )
 
     async def find_torrent_by_id(
         self, torrent_id: str

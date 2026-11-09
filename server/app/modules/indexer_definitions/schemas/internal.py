@@ -50,6 +50,19 @@ class IndexerDefinitionTorrent(BaseModel):
     attribute_ids: list[str] = []
 
 
+class IndexerDefinitionSearchHit(BaseModel):
+    """Szabad szöveges keresés egy találata (a kiadás nevével)."""
+
+    torrent_id: str
+    name: str
+    category: str = ""
+    size: int = 0
+    seeders: int = 0
+    leechers: int = 0
+    imdb_id: str | None = None
+    download_url: str | None = None
+
+
 class IndexerDefinitionFindTorrentsResult(BaseModel):
     torrents: list[IndexerDefinitionTorrent] = []
     next_page: int | None = None

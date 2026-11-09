@@ -5,7 +5,13 @@ import {
   useQueryClient,
 } from '@tanstack/react-query'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { CloudUploadIcon, InfoIcon, RefreshCwIcon } from 'lucide-react'
+import {
+  CloudUploadIcon,
+  CopyIcon,
+  InfoIcon,
+  RefreshCwIcon,
+  SearchIcon,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { toast } from 'sonner'
@@ -29,8 +35,11 @@ import { Input } from '@/shared/components/ui/input'
 import { Progress } from '@/shared/components/ui/progress'
 import { Separator } from '@/shared/components/ui/separator'
 import { Textarea } from '@/shared/components/ui/textarea'
+import { useCopy } from '@/shared/hooks/use-copy'
 import { AXIOS_INSTANCE } from '@/shared/lib/source/source-client-instance'
 import { parseApiError } from '@/shared/lib/utils'
+import { getMe } from '@/shared/queries/me'
+import { getSystemStatus } from '@/shared/queries/system'
 
 export const TORBOX_UPLOAD_NAME = 'Torrent hozzáadása'
 
@@ -104,6 +113,13 @@ function TorboxUploadRoute() {
   const [magnet, setMagnet] = useState('')
 
   const { data: status, isFetching, refetch } = useQuery(torboxStatus)
+  const { data: me } = useQuery(getMe())
+  const { data: systemStatus } = useQuery(getSystemStatus)
+  const { handleCopy } = useCopy()
+  const ncoreAddonUrl =
+    me && systemStatus
+      ? `${systemStatus.appUrl}/api/${me.apiKey}/ncore/manifest.json`
+      : null
 
   // A telefonos megosztásból visszatérve az eredményt jelezzük, majd a címet
   // kitakarítjuk, hogy frissítéskor ne jelenjen meg újra.
@@ -148,6 +164,34 @@ function TorboxUploadRoute() {
 
   return (
     <div className="grid gap-8">
+      {status?.enabled && ncoreAddonUrl && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <SearchIcon className="size-5" />
+              nCore-keresés a Nuvióban
+            </CardTitle>
+            <CardDescription>
+              Külön Nuvio-bővítmény: a Nuvio keresőjébe szabad szöveggel (pl.
+              „X-Faktor S14E11”) az nCore-on keres, és a találatot a TorBoxon át
+              játssza le – arra is, ami a TMDB-n nem szerepel. A linket a
+              Nuvióban a Bővítmények közé add hozzá.
+            </CardDescription>
+          </CardHeader>
+          <Separator />
+          <CardContent className="flex items-center gap-2">
+            <code className="text-xs break-all flex-1">{ncoreAddonUrl}</code>
+            <Button
+              size="icon-sm"
+              className="rounded-full"
+              aria-label="Link másolása"
+              onClick={() => void handleCopy(ncoreAddonUrl)}
+            >
+              <CopyIcon />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>{TORBOX_UPLOAD_NAME}</CardTitle>
