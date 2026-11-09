@@ -30,14 +30,31 @@ from app.modules.torbox_play.stremio import (
     poster_for,
 )
 
+# A gyűjtemény (csempés sáv) katalógusai: egy kötelező „nCore” műfajjal, így
+# önálló kezdőlapsorként nem jelennek meg, csak a gyűjteménymappában.
 POPULAR_ID = "ncore-nepszeru"
 STAFF_ID = "ncore-staff"
 GENRE = "nCore"
-CATALOG_NAMES = {POPULAR_ID: "🔥 nCore népszerű", STAFF_ID: "⭐ nCore staff ajánló"}
+COLLECTION_NAMES = {
+    POPULAR_ID: "nCore-ajánló: népszerű (gyűjteményhez)",
+    STAFF_ID: "nCore-ajánló: staff (gyűjteményhez)",
+}
+# Ugyanez sima kezdőlapsorként (extra nélkül, a Nuvio magától mutatja).
+POPULAR_ROW_ID = "ncore-nepszeru-sor"
+STAFF_ROW_ID = "ncore-staff-sor"
+ROW_NAMES = {POPULAR_ROW_ID: "🔥 nCore népszerű", STAFF_ROW_ID: "⭐ nCore staff ajánló"}
+CATALOG_NAMES = {**ROW_NAMES, **COLLECTION_NAMES}
 MAX_TILES = 40
 IMDB_WAIT = 12.0
 
-_GROUPS = {POPULAR_ID: ("nepszeru", "aktiv"), STAFF_ID: ("staff",)}
+_POPULAR = ("nepszeru", "aktiv")
+_STAFF = ("staff",)
+_GROUPS = {
+    POPULAR_ID: _POPULAR,
+    POPULAR_ROW_ID: _POPULAR,
+    STAFF_ID: _STAFF,
+    STAFF_ROW_ID: _STAFF,
+}
 _LABELS = {
     "nepszeru": "🔥 Most népszerű az nCore-on",
     "aktiv": "📈 A legaktívabbak között az nCore-on",
@@ -49,9 +66,13 @@ _SERIES_CATEGORY = {"HD": "hdser", "SD": "xvidser", "DVD": "dvdser", "DVD9": "dv
 
 
 def manifest_catalogs() -> list[ManifestCatalog]:
-    # Egyetlen kötelező „genre” opció: így a Nuvio nem tesz belőle külön
-    # kezdőlapsort, de a gyűjteménymappa (Mesék-szerű kártya) felveheti.
-    return [
+    kinds = (ContentType.MOVIE, ContentType.SERIES)
+    rows = [
+        ManifestCatalog(id=catalog_id, name=name, type=kind)
+        for catalog_id, name in ROW_NAMES.items()
+        for kind in kinds
+    ]
+    collection = [
         ManifestCatalog(
             id=catalog_id,
             name=name,
@@ -60,9 +81,10 @@ def manifest_catalogs() -> list[ManifestCatalog]:
                 ManifestExtra(name=ExtraName.GENRE, is_required=True, options=[GENRE])
             ],
         )
-        for catalog_id, name in CATALOG_NAMES.items()
-        for kind in (ContentType.MOVIE, ContentType.SERIES)
+        for catalog_id, name in COLLECTION_NAMES.items()
+        for kind in kinds
     ]
+    return rows + collection
 
 
 def is_ajanlo(catalog_id: str) -> bool:

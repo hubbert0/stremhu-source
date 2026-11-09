@@ -365,13 +365,19 @@ def test_manifest(client: TestClient) -> None:
     assert [(c["id"], c["type"]) for c in manifest["catalogs"]] == [
         ("ncore-kereses", "movie"),
         ("ncore-kereses", "series"),
+        ("ncore-nepszeru-sor", "movie"),
+        ("ncore-nepszeru-sor", "series"),
+        ("ncore-staff-sor", "movie"),
+        ("ncore-staff-sor", "series"),
         ("ncore-nepszeru", "movie"),
         ("ncore-nepszeru", "series"),
         ("ncore-staff", "movie"),
         ("ncore-staff", "series"),
     ]
-    # Egy kötelező „nCore” műfaj → nem kezdőlapsor, de gyűjteménybe felvehető.
-    for c in manifest["catalogs"][2:]:
+    # Kezdőlapsorok: extra nélkül. Gyűjteményhez: egy kötelező „nCore” műfaj.
+    for c in manifest["catalogs"][2:6]:
+        assert "extra" not in c
+    for c in manifest["catalogs"][6:]:
         assert c["extra"] == [
             {"name": "genre", "isRequired": True, "options": ["nCore"]}
         ]
@@ -627,3 +633,11 @@ def test_ajanlo_is_cached_and_paged_once(
         base("/catalog/movie/ncore-nepszeru/genre=nCore&skip=0.json")
     ).json()
     assert len(first["metas"]) == 3
+
+
+def test_ajanlo_home_rows_match_collection(client: TestClient) -> None:
+    row = client.get(base("/catalog/movie/ncore-nepszeru-sor.json")).json()["metas"]
+    collection = ajanlo(client, "movie", "ncore-nepszeru")
+    assert [m["id"] for m in row] == [m["id"] for m in collection]
+    staff = client.get(base("/catalog/series/ncore-staff-sor.json")).json()["metas"]
+    assert staff == ajanlo(client, "series", "ncore-staff")
