@@ -47,6 +47,7 @@ from app.modules.torbox_play.service import (
     TorboxPlayError,
     TorboxPlayService,
     TorboxState,
+    TorboxStates,
     VideoFile,
     human_size,
     video_files,
@@ -336,8 +337,8 @@ def _status(state: TorboxState | None, known: bool) -> tuple[str, str, int]:
 
 def _description(
     release: Release,
-    file: VideoFile,
-    torrent: CachedTorrent,
+    size: int,
+    package_name: str,
     seeders: int | None,
     status_line: str,
     nfo: NfoInfo,
@@ -361,71 +362,148 @@ def _description(
     )
     if video:
         lines.append(f"🎞️ {video}")
-    size = f"💾 {human_size(file.size)}"
+    size_line = f"💾 {human_size(size)}" if size else ""
     if seeders is not None:
-        size += f" · 🌱 {seeders}"
-    lines.append(size)
+        size_line += f" · 🌱 {seeders}" if size_line else f"🌱 {seeders}"
+    if size_line:
+        lines.append(size_line)
     lines.append(status_line)
-    lines.append(f"📦 {torrent.info.name}")
+    lines.append(f"📦 {package_name}")
     return "\n".join(lines)
 
 
+def is_imdb_id(value: str) -> bool:
+    return re.match(r"^tt\d+(:\d+:\d+)?$", value) is not None
+
+
+async def imdb_versions(
+    service: TorboxPlayService, kind: str, value: str
+) -> OwnId | None:
+    """A Nuvio rendes adatlapja (tt…, sorozatnál tt…:évad:rész) → nCore-verziók."""
+    imdb_id, *rest = value.split(":")
+    season, episode = (int(rest[0]), int(rest[1])) if len(rest) == 2 else (None, None)
+    try:
+        hits = await service.search_imdb(imdb_id, kind)
+    except Exception as error:
+        logger.warning("nCore IMDb-keresés sikertelen (%s): %s", value, error)
+        return None
+    chosen: list[IndexerDefinitionSearchHit] = []
+    for hit in hits:
+        if season is not None:
+            release = parse_release(hit.name, hit.category)
+            # A kért rész kiadása, vagy az évad csomagja.
+            if release.season != season or release.episode not in (None, episode):
+                continue
+        chosen.append(hit)
+    chosen = sorted(chosen, key=lambda hit: -hit.seeders)[:MAX_VERSIONS]
+    if not chosen:
+        return None
+    versions = [Version(h.torrent_id, h.category.endswith("_hun")) for h in chosen]
+    return OwnId(versions, season=season, episode=episode)
+
+
 async def streams(
-    service: TorboxPlayService, value: str, user: UserModel, app_url: str
+    service: TorboxPlayService,
+    value: str,
+    user: UserModel,
+    app_url: str,
+    kind: str = "movie",
 ) -> list[StremioStream]:
-    own = parse_own_id(value)
+    from_search = is_own_id(value)
+    own = (
+        parse_own_id(value)
+        if from_search
+        else await imdb_versions(service, kind, value)
+    )
     if own is None:
         return []
     try:
-        ids = [v.torrent_id for v in own.versions]
-        found, nfos = await asyncio.gather(service.torrents(ids), service.nfos(ids))
-        if not found:
-            raise TorboxPlayError("Ez a torrent már nincs fent az nCore-on.")
-        try:
-            states = await service.torbox_states()
-            states_known = True
-        except TorboxPlayError as error:
-            logger.warning("TorBox-állapot nem kérdezhető le: %s", error)
-            states, states_known = {}, False
+        rows = await _stream_rows(service, own, user, app_url)
     except TorboxPlayError as error:
-        return [_error_stream(app_url, str(error))]
+        return [_error_stream(app_url, str(error))] if from_search else []
     except Exception as error:
         logger.exception("nCore/TorBox-forrás hiba (%s)", value)
+        if not from_search:
+            return []
         return [_error_stream(app_url, f"Váratlan hiba: {type(error).__name__}")]
+    if not rows:
+        if not from_search:
+            return []
+        return [_error_stream(app_url, "Ehhez nem találtam videófájlt a torrentekben.")]
+    rows.sort(key=lambda row: row[0])
+    return [stream for _, stream in rows]
 
+
+async def _stream_rows(
+    service: TorboxPlayService, own: OwnId, user: UserModel, app_url: str
+) -> list[tuple[tuple[int, int, int], StremioStream]]:
+    hits = {v.torrent_id: service.hit(v.torrent_id) for v in own.versions}
+    releases: dict[str, Release] = {}
+    for version in own.versions:
+        hit = hits[version.torrent_id]
+        if hit is not None:
+            releases[version.torrent_id] = parse_release(
+                hit.name, _category(service, version)
+            )
+    # A .torrent csak akkor kell már a listához, ha fájlt kell választani
+    # (évadcsomag, régi azonosító) vagy nincs keresési adat; különben a
+    # lejátszáskor töltjük le.
+    needed = [
+        v.torrent_id
+        for v in own.versions
+        if hits[v.torrent_id] is None
+        or own.file_index is not None
+        or (own.season is not None and releases[v.torrent_id].episode is None)
+    ]
+    ids = [v.torrent_id for v in own.versions]
+    found, nfos = await asyncio.gather(service.torrents(needed), service.nfos(ids))
     by_id = {t.torrent_id: t for t in found}
+    if needed and not by_id and len(needed) == len(ids):
+        raise TorboxPlayError("Ez a torrent már nincs fent az nCore-on.")
+    try:
+        states = await service.torbox_states()
+        states_known = True
+    except TorboxPlayError as error:
+        logger.warning("TorBox-állapot nem kérdezhető le: %s", error)
+        states, states_known = TorboxStates(), False
+
     rows: list[tuple[tuple[int, int, int], StremioStream]] = []
     for version in own.versions:
-        torrent = by_id.get(version.torrent_id)
-        if torrent is None:
-            continue
-        release = _release_of(service, version, torrent)
+        tid = version.torrent_id
+        hit = hits[tid]
+        torrent = by_id.get(tid) or service.cached_torrent(tid)
+        release = releases.get(tid) or _release_of(service, version, torrent)
         if release is None:
             continue
-        file = _pick_file(own, torrent, release)
-        if file is None:
-            continue
-        state = states.get(torrent.info.info_hash.lower())
+        if tid in needed:
+            if torrent is None:
+                continue
+            file = _pick_file(own, torrent, release)
+            if file is None:
+                continue
+            selector, size, filename = str(file.index), file.size, file.name
+            package_name = torrent.info.name
+        else:
+            assert hit is not None
+            selector, size, filename = "auto", hit.size, None
+            package_name = torrent.info.name if torrent else hit.name
+        state = states.find(torrent.info.info_hash if torrent else None, package_name)
         icon, status_line, order = _status(state, states_known)
-        hit = service.hit(version.torrent_id)
         seeders = hit.seeders if hit is not None else None
         stream = StremioStream(
             name=f"nCore {icon}\n{release.resolution}",
             description=_description(
                 release,
-                file,
-                torrent,
+                size,
+                package_name,
                 seeders,
                 status_line,
-                nfos.get(version.torrent_id) or NfoInfo(),
+                nfos.get(tid) or NfoInfo(),
             ),
-            url=(
-                f"{app_url}/api/{user.api_key}/ncore/play/"
-                f"{version.torrent_id}/{file.index}"
-            ),
+            url=f"{app_url}/api/{user.api_key}/ncore/play/{tid}/{selector}",
             behavior_hints=BehaviorHints(
-                filename=file.name,
-                video_size=file.size,
+                filename=filename,
+                video_size=size or None,
                 binge_group=(
                     f"stremhu-tb-{release.resolution}-"
                     f"{'hu' if release.hungarian_audio else 'orig'}"
@@ -438,11 +516,7 @@ async def streams(
             -(seeders or 0),
         )
         rows.append((sort_key, stream))
-
-    if not rows:
-        return [_error_stream(app_url, "Ehhez nem találtam videófájlt a torrentekben.")]
-    rows.sort(key=lambda row: row[0])
-    return [stream for _, stream in rows]
+    return rows
 
 
 def _error_stream(app_url: str, text: str) -> StremioStream:

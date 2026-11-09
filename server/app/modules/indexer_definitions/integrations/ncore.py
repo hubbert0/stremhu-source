@@ -154,13 +154,24 @@ class NcoreIndexerDefinition(BaseIndexerDefinition):
         self, query: str, max_pages: int = 2
     ) -> list[IndexerDefinitionSearchHit]:
         """Keresés a kiadások nevében (nCore: miben=name), seederek szerint."""
+        return await self._search_hits("name", query, max_pages)
+
+    async def search_by_imdb(
+        self, imdb_id: str, max_pages: int = 2
+    ) -> list[IndexerDefinitionSearchHit]:
+        """Egy cím összes kiadása IMDb-azonosító szerint, kiadásnévvel."""
+        return await self._search_hits("imdb", imdb_id, max_pages)
+
+    async def _search_hits(
+        self, field: str, query: str, max_pages: int
+    ) -> list[IndexerDefinitionSearchHit]:
         hits: list[IndexerDefinitionSearchHit] = []
         for page in range(1, max_pages + 1):
             response = await self._client.get(
                 "/torrents.php",
                 params={
                     "oldal": str(page),
-                    "miben": "name",
+                    "miben": field,
                     "mire": query,
                     "miszerint": "seeders",
                     "hogyan": "DESC",

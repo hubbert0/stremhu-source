@@ -19,6 +19,7 @@ from app.modules.settings.dependencies import get_settings_service
 from app.modules.settings.service import SettingsService
 from app.modules.stremio.enums import ContentType, ShortManifestResource
 from app.modules.stremio.schemas import (
+    FullManifestResource,
     Manifest,
     ManifestBehaviorHints,
     MetaResponse,
@@ -53,13 +54,20 @@ def manifest(settings: Settings, _: User) -> Manifest:
         version=version,
         name="nCore-keresés (TorBox)",
         description=(
-            "Szabad szöveges keresés az nCore-on (pl. „X-Faktor S14E11”), "
-            "lejátszás a TorBoxon át. Arra, ami a TMDB-n nem szerepel."
+            "Szabad szöveges keresés az nCore-on (pl. „X-Faktor S14E11”), és "
+            "külön nCore-forráslista a rendes adatlapokon is; lejátszás a "
+            "TorBoxon át, részletes hang- és feliratadatokkal (NFO)."
         ),
         resources=[
             ShortManifestResource.CATALOG,
             ShortManifestResource.META,
-            ShortManifestResource.STREAM,
+            # Forrást a rendes (TMDB/IMDb) adatlapokhoz is adunk: ott külön
+            # „nCore-keresés (TorBox)” fül jelenik meg. Adatlapot nem.
+            FullManifestResource(
+                name=ShortManifestResource.STREAM,
+                types=[ContentType.MOVIE, ContentType.SERIES],
+                id_prefixes=[adapter.PREFIX, "tt"],
+            ),
         ],
         types=[ContentType.MOVIE, ContentType.SERIES],
         id_prefixes=[adapter.PREFIX],
@@ -110,20 +118,28 @@ async def meta(
 async def stream(
     media_type: str, stream_id: str, service: Service, settings: Settings, user: User
 ) -> StremioStreams:
-    if not adapter.is_own_id(stream_id):
+    if media_type not in ("movie", "series"):
         return StremioStreams(streams=[])
-    streams = await adapter.streams(service, stream_id, user, settings.get_app_url())
+    if not adapter.is_own_id(stream_id) and not adapter.is_imdb_id(stream_id):
+        return StremioStreams(streams=[])
+    streams = await adapter.streams(
+        service, stream_id, user, settings.get_app_url(), media_type
+    )
     return StremioStreams(streams=streams)
 
 
 @router.get("/play/{torrent_id}/{file_index}", include_in_schema=False)
 async def play(
-    torrent_id: str, file_index: int, service: Service, settings: Settings, user: User
+    torrent_id: str, file_index: str, service: Service, settings: Settings, user: User
 ):
     """Lejátszáskor: ha a verzió még nincs a TorBoxon, most kerül fel, és a
     „még tölti” videóra irányítunk; ha kész, a friss TorBox-linkre."""
+    if not torrent_id.isdigit() or not (file_index.isdigit() or file_index == "auto"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     try:
-        url = await service.play_url(torrent_id, file_index)
+        url = await service.play_url(
+            torrent_id, None if file_index == "auto" else int(file_index)
+        )
     except TorboxPlayError as error:
         return PlainTextResponse(
             str(error), status_code=status.HTTP_503_SERVICE_UNAVAILABLE

@@ -103,6 +103,34 @@ class FakeNcore:
             hit(torrent_id="333", name="Valami.XXX", category="xxx_hd"),
         ]
 
+    async def search_by_imdb(self, imdb_id: str) -> list[IndexerDefinitionSearchHit]:
+        self.searches.append(imdb_id)
+        hit = IndexerDefinitionSearchHit
+        if imdb_id == "tt1":
+            return [
+                hit(torrent_id="222", name=FILM, category="hd_hun", seeders=9),
+                hit(torrent_id="223", name=FILM_SUB, category="hd", seeders=3),
+            ]
+        if imdb_id == "tt2":
+            return [
+                hit(torrent_id="111", name=PACK, category="hdser_hun", seeders=20),
+                hit(torrent_id="112", name=PACK_720, category="hdser_hun", seeders=5),
+                hit(
+                    torrent_id="113",
+                    name="X-Faktor.S14E02.HUN.1080p.WEB-DL.H264-LEGION",
+                    category="hdser_hun",
+                    size=1_200_000_000,
+                    seeders=50,
+                ),
+                hit(
+                    torrent_id="114",
+                    name="X-Faktor.S13E02.HUN.1080p.WEB-DL.H264-LEGION",
+                    category="hdser_hun",
+                    seeders=99,
+                ),
+            ]
+        return []
+
     async def find_torrent_by_id(self, torrent_id: str) -> IndexerDefinitionTorrent:
         return IndexerDefinitionTorrent(
             torrent_id=torrent_id,
@@ -278,11 +306,21 @@ def test_manifest(client: TestClient) -> None:
         ("ncore-kereses", "series"),
     ]
     assert manifest["catalogs"][0]["extra"][0]["isRequired"] is True
+    # Forrás a rendes (tt…) adatlapokhoz is, adatlap csak a sajátjainkhoz.
+    stream_resource = next(
+        r
+        for r in manifest["resources"]
+        if isinstance(r, dict) and r["name"] == "stream"
+    )
+    assert stream_resource["idPrefixes"] == ["stremhu-tb:", "tt"]
+    assert "meta" in manifest["resources"]
 
 
 def test_foreign_ids_are_ignored(client: TestClient) -> None:
+    # Ismeretlen IMDb-cím: üres (nem hibaüzenet), adatlapot nem adunk.
     assert client.get(base("/stream/movie/tt0111161.json")).json() == {"streams": []}
     assert client.get(base("/meta/movie/tt0111161.json")).json() == {"meta": {}}
+    assert client.get(base("/stream/movie/kitsu:1.json")).json() == {"streams": []}
 
 
 SERIES_ID = "stremhu-tb:ncore:111h_112h"
@@ -374,7 +412,9 @@ def test_movie_streams_use_nfo_and_fall_back_to_name(
     search(client, "movie")
     streams = client.get(base(f"/stream/movie/{MOVIE_ID}.json")).json()["streams"]
     assert [s["name"] for s in streams] == ["nCore ⬇️\n1080p", "nCore ⬇️\n720p"]
-    assert streams[0]["url"].endswith("/ncore/play/222/1")
+    # Filmnél a .torrent csak lejátszáskor kell (a legnagyobb videófájl).
+    assert streams[0]["url"].endswith("/ncore/play/222/auto")
+    assert service._definitions.ncore.downloads == []  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
     # 222: az NFO-ból (minden hangsáv, felirat, bitráta).
     first = streams[0]["description"]
     assert "🗣️ magyar 5.1 · angol 7.1" in first
@@ -410,3 +450,55 @@ def test_wait_video_is_served(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
     assert len(response.content) > 10_000
+
+
+def test_imdb_movie_page_lists_versions_without_downloads(
+    client: TestClient, service: TorboxPlayService, torbox: FakeTorbox
+) -> None:
+    ncore = service._definitions.ncore  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    # A TorBoxon már kész a 222 (név szerint ismerjük fel, .torrent nélkül).
+    torbox.items.append(
+        {
+            "id": 90,
+            "hash": INFOS["222"].info_hash,
+            "name": FILM,
+            "download_finished": True,
+            "download_present": True,
+            "progress": 1,
+            "download_state": "uploading",
+            "files": [],
+        }
+    )
+    streams = client.get(base("/stream/movie/tt1.json")).json()["streams"]
+    assert [s["name"] for s in streams] == ["nCore ▶️\n1080p", "nCore ⬇️\n720p"]
+    assert [s["url"].rsplit("/", 2)[1:] for s in streams] == [
+        ["222", "auto"],
+        ["223", "auto"],
+    ]
+    assert "🗣️ magyar 5.1 · angol 7.1" in streams[0]["description"]
+    assert ncore.downloads == []
+    assert torbox.created == []
+
+
+def test_imdb_series_page_picks_episode_and_season_packs(
+    client: TestClient, service: TorboxPlayService
+) -> None:
+    ncore = service._definitions.ncore  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    streams = client.get(base("/stream/series/tt2:14:2.json")).json()["streams"]
+    urls = [s["url"].rsplit("/", 2)[1:] for s in streams]
+    # Az S13 kimarad; az egyepizódos kiadás „auto”, a csomagoknál a 2. rész.
+    assert sorted(urls) == [["111", "1"], ["112", "1"], ["113", "auto"]]
+    assert sorted(ncore.downloads) == ["111", "112"]
+
+
+def test_play_auto_uploads_and_picks_largest_file(
+    client: TestClient, torbox: FakeTorbox
+) -> None:
+    client.get(base("/stream/movie/tt1.json"))
+    wait = client.get(base("/play/222/auto"), follow_redirects=False)
+    assert wait.headers["location"].endswith("/ncore/varj.mp4")
+    assert torbox.created == ["222"]
+    torbox.finish("222")
+    played = client.get(base("/play/222/auto"), follow_redirects=False)
+    assert played.headers["location"] == "https://cdn.torbox.app/70/101.mkv"
+    assert client.get(base("/play/222/x"), follow_redirects=False).status_code == 404

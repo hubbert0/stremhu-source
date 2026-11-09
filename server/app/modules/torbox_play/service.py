@@ -8,7 +8,7 @@ kerül fel, és amíg tölt, egy rövid „még tölti” videóra irányítunk.
 import asyncio
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -137,6 +137,17 @@ def match_torbox_file(
     return None
 
 
+@dataclass
+class TorboxStates:
+    by_hash: dict[str, TorboxState] = field(default_factory=dict)
+    by_name: dict[str, TorboxState] = field(default_factory=dict)
+
+    def find(self, info_hash: str | None, name: str) -> TorboxState | None:
+        if info_hash and info_hash.lower() in self.by_hash:
+            return self.by_hash[info_hash.lower()]
+        return self.by_name.get(name.strip().lower())
+
+
 def _state_of(item: dict[str, Any]) -> TorboxState:
     return TorboxState(
         torbox_id=int(item["id"]),
@@ -185,13 +196,27 @@ class TorboxPlayService:
         query = " ".join(query.split())
         if len(query) < 2:
             return []
-        key = query.lower()
+        return await self._cached_search(query.lower(), kind, by_imdb=False)
+
+    async def search_imdb(
+        self, imdb_id: str, kind: str
+    ) -> list[IndexerDefinitionSearchHit]:
+        """Egy TMDB/IMDb-cím kiadásai (a Nuvio rendes adatlapjához)."""
+        return await self._cached_search(imdb_id, kind, by_imdb=True)
+
+    async def _cached_search(
+        self, query: str, kind: str, *, by_imdb: bool
+    ) -> list[IndexerDefinitionSearchHit]:
+        key = f"imdb:{query}" if by_imdb else query
         cached = self._search_cache.get(key)
         if cached and time.monotonic() - cached[0] < SEARCH_TTL:
             hits = cached[1]
         else:
             definition = self._definitions.get_by_id(INDEXER_ID)
-            hits = await definition.search_by_name(query)
+            if by_imdb:
+                hits = await definition.search_by_imdb(query)
+            else:
+                hits = await definition.search_by_name(query)
             self._search_cache[key] = (time.monotonic(), hits)
             for hit in hits:
                 self._hits[hit.torrent_id] = hit
@@ -204,6 +229,9 @@ class TorboxPlayService:
 
     def hit(self, torrent_id: str) -> IndexerDefinitionSearchHit | None:
         return self._hits.get(torrent_id)
+
+    def cached_torrent(self, torrent_id: str) -> CachedTorrent | None:
+        return self._torrents.get(torrent_id)
 
     async def torrents(self, torrent_ids: list[str]) -> list[CachedTorrent]:
         """Több .torrent egyszerre; ami nem tölthető le, kimarad."""
@@ -262,8 +290,8 @@ class TorboxPlayService:
                 return _state_of(item)
         return None
 
-    async def torbox_states(self) -> dict[str, TorboxState]:
-        """Az összes TorBox-torrent állapota hash szerint (egy lekérdezés)."""
+    async def torbox_states(self) -> "TorboxStates":
+        """Az összes TorBox-torrent állapota hash és név szerint (egy lekérdezés)."""
         client = self._torbox()
         try:
             items = await client.list_raw()
@@ -273,11 +301,14 @@ class TorboxPlayService:
             raise TorboxPlayError(
                 f"A TorBox nem érhető el ({type(error).__name__})."
             ) from error
-        return {
-            str(item.get("hash") or "").lower(): _state_of(item)
-            for item in items
-            if item.get("hash")
-        }
+        states = TorboxStates()
+        for item in items:
+            state = _state_of(item)
+            if item.get("hash"):
+                states.by_hash[str(item["hash"]).lower()] = state
+            if item.get("name"):
+                states.by_name.setdefault(str(item["name"]).strip().lower(), state)
+        return states
 
     async def ensure_on_torbox(self, torrent: CachedTorrent) -> TorboxState | None:
         """A torrent állapota a TorBoxon; ha nincs fent, most feltöltjük."""
@@ -301,11 +332,17 @@ class TorboxPlayService:
             ) from error
         return state
 
-    async def play_url(self, torrent_id: str, file_index: int) -> str | None:
+    async def play_url(self, torrent_id: str, file_index: int | None) -> str | None:
         """Lejátszáskor: ha kész, a fájl friss TorBox-linkje; ha nincs fent,
-        most kerül fel a TorBoxra, és None (még tölt)."""
+        most kerül fel a TorBoxra, és None (még tölt). Fájlindex nélkül a
+        legnagyobb videófájl (film, egyepizódos kiadás)."""
         torrent = await self.torrent(torrent_id)
         files = {f.index: f for f in torrent.info.files}
+        if file_index is None:
+            videos = video_files(torrent.info)
+            if not videos:
+                raise TorboxPlayError("Ebben a torrentben nincs videófájl.")
+            file_index = max(videos, key=lambda f: f.size).index
         if file_index not in files:
             raise TorboxPlayError("Nincs ilyen fájl a torrentben.")
         state = await self.ensure_on_torbox(torrent)
