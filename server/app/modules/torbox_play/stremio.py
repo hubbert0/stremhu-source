@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.common.logger import logger
+from app.config import config
 from app.modules.indexer_definitions.dependencies import (
     get_indexer_definitions_service,
 )
@@ -67,7 +68,9 @@ _VERSION = re.compile(r"^(\d+)(h?)$")
 @functools.lru_cache(maxsize=1)
 def get_torbox_play_service() -> TorboxPlayService:
     return TorboxPlayService(
-        get_torbox_seed_settings(), get_indexer_definitions_service()
+        get_torbox_seed_settings(),
+        get_indexer_definitions_service(),
+        staff_pool_path=config.system_dir / "ncore-staff-ajanlo.json",
     )
 
 

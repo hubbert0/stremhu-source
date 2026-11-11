@@ -6,9 +6,11 @@ kerül fel, és amíg tölt, egy rövid „még tölti” videóra irányítunk.
 """
 
 import asyncio
+import json
 import re
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -32,6 +34,10 @@ NFO_TIMEOUT = 6.0
 RECOMMENDED_TTL = 3 * 60 * 60
 RECOMMENDED_RETRY = 10 * 60
 IMDB_CACHE_SIZE = 5000
+# A borítós „Staff által jelölt” sáv minden oldalbetöltéskor véletlenszerűen
+# mutat 6 címet egy nagyobb készletből; ezért gyűjtjük, amit 7 napon belül láttunk.
+STAFF_GROUP = "staff"
+STAFF_KEEP = 7 * 24 * 60 * 60
 
 # Csak videós kategóriák (felnőtt, zene, könyv, játék, program kimarad).
 SERIES_CATEGORIES = {
@@ -169,6 +175,7 @@ class TorboxPlayService:
         settings: TorboxSeedSettings,
         indexer_definitions_service: IndexerDefinitionsService,
         transport: httpx.AsyncBaseTransport | None = None,
+        staff_pool_path: Path | None = None,
     ):
         self._settings = settings
         self._definitions = indexer_definitions_service
@@ -187,6 +194,11 @@ class TorboxPlayService:
         self._recommended_at = 0.0
         self._recommended_lock = asyncio.Lock()
         self._recommended_task: asyncio.Task[None] | None = None
+        # Az eddig látott staff-ajánlások: torrent → (elem, utoljára látva).
+        self._staff_pool_path = staff_pool_path
+        self._staff_pool: dict[str, tuple[IndexerDefinitionRecommendedItem, float]] = (
+            self._load_staff_pool()
+        )
         # Torrent → IMDb-azonosító (az adatlapról; nem változik).
         self._imdb: dict[str, str | None] = {}
         self._imdb_limit = asyncio.Semaphore(3)
@@ -280,8 +292,75 @@ class TorboxPlayService:
                 )
                 return
             if items:
-                self._recommended = items
+                self._remember_staff(items)
+                self._recommended = [
+                    i for i in items if i.group != STAFF_GROUP
+                ] + self._staff_items()
             self._recommended_at = time.monotonic()
+
+    def _remember_staff(self, items: list[IndexerDefinitionRecommendedItem]) -> None:
+        now = time.time()
+        for item in items:
+            if item.group == STAFF_GROUP:
+                self._staff_pool[item.torrent_id] = (item, now)
+        for torrent_id, (_, seen) in list(self._staff_pool.items()):
+            if now - seen > STAFF_KEEP:
+                del self._staff_pool[torrent_id]
+        self._save_staff_pool()
+
+    def _staff_items(self) -> list[IndexerDefinitionRecommendedItem]:
+        """A gyűjtött staff-ajánlások, a legújabb feltöltés elöl (a nagyobb
+        nCore-azonosító későbbi feltöltés)."""
+        ordered = sorted(
+            (item for item, _ in self._staff_pool.values()),
+            key=lambda i: -int(i.torrent_id) if i.torrent_id.isdigit() else 0,
+        )
+        ranks: dict[str, int] = {}
+        result: list[IndexerDefinitionRecommendedItem] = []
+        for item in ordered:
+            rank = ranks.get(item.section, 0)
+            ranks[item.section] = rank + 1
+            result.append(item.model_copy(update={"rank": rank}))
+        return result
+
+    def _load_staff_pool(
+        self,
+    ) -> dict[str, tuple[IndexerDefinitionRecommendedItem, float]]:
+        path = self._staff_pool_path
+        if path is None or not path.exists():
+            return {}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            pool = {
+                entry["item"]["torrent_id"]: (
+                    IndexerDefinitionRecommendedItem(**entry["item"]),
+                    float(entry["seen"]),
+                )
+                for entry in raw.get("items", [])
+            }
+        except Exception as error:
+            logger.warning("A staff-ajánló gyűjtése nem olvasható: %s", error)
+            return {}
+        now = time.time()
+        return {k: v for k, v in pool.items() if now - v[1] <= STAFF_KEEP}
+
+    def _save_staff_pool(self) -> None:
+        path = self._staff_pool_path
+        if path is None:
+            return
+        data = {
+            "items": [
+                {"item": item.model_dump(), "seen": seen}
+                for item, seen in self._staff_pool.values()
+            ]
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temp = path.with_suffix(".tmp")
+            temp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            temp.replace(path)
+        except OSError as error:
+            logger.warning("A staff-ajánló gyűjtése nem menthető: %s", error)
 
     async def imdb_of(self, torrent_id: str) -> str | None:
         """A torrent IMDb-azonosítója az nCore-adatlapról (egyszer kérjük le)."""

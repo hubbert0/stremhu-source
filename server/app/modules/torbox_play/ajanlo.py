@@ -4,7 +4,8 @@ Két katalógus típusonként (film, sorozat), egyetlen kötelező „nCore” m
 opcióval: így nem lesz belőlük külön kezdőlapsor, a Nuvio-gyűjtemény kártyái
 (deploy/nuvio-gyujtemenyek/ncore.json) viszont megnyitják őket:
 - „🔥 nCore népszerű”: a jobb oldali lista és a „Legaktívabb” borítók;
-- „⭐ nCore staff ajánló”: a „Staff által jelölt” borítók.
+- „⭐ nCore staff ajánló”: a „Staff által jelölt” borítók (az nCore minden
+  betöltéskor véletlenül mutat belőlük 6-ot, ezért 7 napig gyűjtjük őket).
 
 Egy cím egy csempe. Ha az nCore-adatlapon van IMDb-link, a csempe a rendes
 adatlapot nyitja (ott a „nCore-keresés (TorBox)” fül adja a forrásokat);
