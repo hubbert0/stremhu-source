@@ -1,3 +1,5 @@
+import datetime
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.modules.indexers.background_tasks import run_indexers_cleanup
@@ -6,6 +8,8 @@ from app.modules.network.background_tasks import (
     run_network_ip_sync,
 )
 from app.modules.pairings.background_tasks import run_expired_pairings_cleanup
+from app.modules.torbox_play.background_tasks import run_ncore_recommended_refresh
+from app.modules.torbox_play.service import STAFF_REFRESH_MINUTES
 from app.modules.torbox_seed.background_tasks import run_torbox_seed_cleanup
 from app.modules.torbox_seed.config import get_torbox_seed_settings
 from app.modules.torrent_files.background_tasks import (
@@ -75,6 +79,16 @@ def setup_scheduler() -> AsyncIOScheduler:
             trigger="interval",
             minutes=torbox_seed_settings.cleanup_interval_minutes,
             id="torbox_seed_cleanup",
+            replace_existing=True,
+        )
+        # nCore-ajánló: félóránként (a staff-borítók gyűjtéséhez), először
+        # egy perccel indulás után.
+        scheduler.add_job(
+            run_ncore_recommended_refresh,
+            trigger="interval",
+            minutes=STAFF_REFRESH_MINUTES,
+            next_run_time=datetime.datetime.now() + datetime.timedelta(minutes=1),
+            id="ncore_recommended_refresh",
             replace_existing=True,
         )
 

@@ -34,8 +34,10 @@ NFO_TIMEOUT = 6.0
 RECOMMENDED_TTL = 3 * 60 * 60
 RECOMMENDED_RETRY = 10 * 60
 IMDB_CACHE_SIZE = 5000
-# A borítós „Staff által jelölt” sáv minden oldalbetöltéskor véletlenszerűen
-# mutat 6 címet egy nagyobb készletből; ezért gyűjtjük, amit 7 napon belül láttunk.
+# A borítós „Staff által jelölt” sáv egy nagyobb készletből mutat 6 címet, és
+# legfeljebb félóránként cseréli őket; ezért félóránként lekérjük az oldalt, és
+# gyűjtjük, amit 7 napon belül láttunk.
+STAFF_REFRESH_MINUTES = 30
 STAFF_GROUP = "staff"
 STAFF_KEEP = 7 * 24 * 60 * 60
 
@@ -274,10 +276,16 @@ class TorboxPlayService:
         await self._refresh_recommended()
         return self._recommended
 
-    async def _refresh_recommended(self) -> None:
+    async def refresh_recommended_now(self) -> None:
+        """Az ütemezett, félórás lekérés: a staff-borítók időnként cserélődnek,
+        így a gyűjtés akkor is halad, ha senki nem nyitja meg a Nuviót."""
+        await self._refresh_recommended(force=True)
+
+    async def _refresh_recommended(self, *, force: bool = False) -> None:
         async with self._recommended_lock:
             if (
-                self._recommended
+                not force
+                and self._recommended
                 and time.monotonic() - self._recommended_at < RECOMMENDED_TTL
             ):
                 return

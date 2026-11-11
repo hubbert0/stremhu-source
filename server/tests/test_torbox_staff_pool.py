@@ -136,3 +136,12 @@ def test_broken_pool_file_is_ignored(clock: Clock, tmp_path: Path) -> None:
     service, ncore = make(path)
     ncore.pages = [[staff("10")]]
     assert staff_ids(refresh(service)) == ["10"]
+
+
+def test_scheduled_refresh_ignores_ttl(clock: Clock) -> None:
+    service, ncore = make(None)
+    ncore.pages = [[staff("10")], [staff("20")]]
+    refresh(service)
+    # Frissen lekért lista mellett is lekér (a lusta frissítés itt várna 3 órát).
+    asyncio.run(service.refresh_recommended_now())
+    assert staff_ids(service._recommended) == ["20", "10"]  # pyright: ignore[reportPrivateUsage]
